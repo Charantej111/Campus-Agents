@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 venv/
 .env
-
+credentials.json
 # Node
 node_modules/
 dist/

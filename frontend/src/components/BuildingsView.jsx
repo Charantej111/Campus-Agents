@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { Building2, Search, Plus, MapPin, ArrowRight, Loader2, Castle, LandPlot, Trash2, Edit2 } from 'lucide-react';
+import { Building2, Search, Plus, MapPin, ArrowRight, Loader2, Castle, LandPlot, Trash2, Edit2, ChevronDown, ChevronRight } from 'lucide-react';
 import RoomView from './RoomView';
 
 
@@ -49,7 +49,7 @@ const BuildingsView = ({ onNavigate }) => {
     const handleCreate = async (e) => {
         e.preventDefault();
         if (!newBldg.id || !newBldg.id.trim() || !newBldg.name || !newBldg.name.trim()) {
-            showToast("Please provide both structure code and name", "error");
+            alert("Please provide both structure code and name");
             return;
         }
         setCreating(true);
@@ -62,7 +62,7 @@ const BuildingsView = ({ onNavigate }) => {
             fetchBuildings();
         } catch (err) {
             console.error(err);
-            showToast("Failed to create building", "error");
+            alert("Failed to create building");
         } finally {
             setCreating(false);
         }
@@ -70,16 +70,15 @@ const BuildingsView = ({ onNavigate }) => {
 
     const handleDelete = async (e, id) => {
         e.stopPropagation();
-        if (!window.confirm("Delete this building and all its halls?")) return;
+        if (!window.confirm("Delete this building and all its rooms?")) return;
         try {
             if (!id) {
-                // Use query-based delete for empty string ids
                 await axios.delete(`${API_URL}/workspaces/${workspace.id}/buildings`, { params: { id: id } });
             } else {
                 await axios.delete(`${API_URL}/workspaces/${workspace.id}/buildings/${id}`);
             }
             fetchBuildings();
-        } catch (err) { console.error(err); showToast("Delete failed", "error"); }
+        } catch (err) { console.error(err); alert("Delete failed"); }
     }
 
     const startEditBuilding = (e, b) => {
@@ -100,10 +99,9 @@ const BuildingsView = ({ onNavigate }) => {
             await axios.put(`${API_URL}/workspaces/${workspace.id}/buildings/${editingBuildingId}`, editBuildingData);
             setEditingBuildingId(null);
             fetchBuildings();
-            showToast("Building updated", "success");
         } catch (err) {
             console.error(err);
-            showToast("Failed to update building", "error");
+            alert("Failed to update building");
         }
     }
 
@@ -223,7 +221,10 @@ const BuildingsView = ({ onNavigate }) => {
                                     <div className="p-4 relative">
                                         <div className="absolute top-0 right-0 w-20 h-20 bg-purple-500/10 rounded-full blur-2xl -mr-10 -mt-10 pointer-events-none"></div>
                                         <div className="flex justify-between items-center border-t border-white/5 pt-2 mt-2">
-                                            <span className="text-xs text-gray-500 flex items-center gap-1"><LandPlot className="w-3 h-3" /> Tap to Explore</span>
+                                            <span className="text-xs text-gray-500 flex items-center gap-1">
+                                                <LandPlot className="w-3 h-3" />
+                                                {b.floors || 0} Floor{(b.floors || 0) !== 1 ? 's' : ''}
+                                            </span>
                                             <ArrowRight className="w-4 h-4 text-purple-500 opacity-0 group-hover:opacity-100 transform -translate-x-2 group-hover:translate-x-0 transition-all" />
                                         </div>
                                     </div>
@@ -242,27 +243,32 @@ const BuildingsView = ({ onNavigate }) => {
     );
 };
 
-// Sub-view: List Halls in a Building
+// Sub-view: Floors & Rooms in a Building (floors = simple integer count)
+
 const RoomSelectionView = ({ building, onBack }) => {
     const { workspace } = useAuth();
-    const [halls, setHalls] = useState([]);
-    const [selectedHall, setSelectedHall] = useState(null);
+    const [rooms, setRooms] = useState([]);
+    const [selectedRoom, setSelectedRoom] = useState(null);
     const [loading, setLoading] = useState(true);
 
-    const [newHall, setNewHall] = useState({ id: "", name: "", capacity: 60, rows: 10, columns: 6 });
-    const [creating, setCreating] = useState(false);
-    const [editingHallId, setEditingHallId] = useState(null);
-    const [editHallData, setEditHallData] = useState({ id: "", name: "", capacity: 60, rows: 10, columns: 6 });
+    const [newRoom, setNewRoom] = useState({ id: "", name: "", capacity: 60, rows: 10, columns: 6, seating_type: "Single", _forFloor: null });
+    const [creatingRoom, setCreatingRoom] = useState(false);
+    const [editingRoomId, setEditingRoomId] = useState(null);
+    const [editRoomData, setEditRoomData] = useState({ id: "", name: "", capacity: 60, rows: 10, columns: 6, seating_type: "Single" });
+
+    const [floorCount, setFloorCount] = useState(building.floors || 0);
+    const [expandedFloors, setExpandedFloors] = useState({});
+    const [addingFloor, setAddingFloor] = useState(false);
 
     useEffect(() => {
-        fetchHalls();
-    }, [building]);
+        fetchRooms();
+    }, [building.id]);
 
-    const fetchHalls = async () => {
+    const fetchRooms = async () => {
         setLoading(true);
         try {
-            const res = await axios.get(`${API_URL}/workspaces/${workspace.id}/buildings/${building.id}/halls`);
-            setHalls(res.data);
+            const res = await axios.get(`${API_URL}/workspaces/${workspace.id}/buildings/${building.id}/rooms`);
+            setRooms(res.data);
         } catch (err) {
             console.error(err);
         } finally {
@@ -270,63 +276,100 @@ const RoomSelectionView = ({ building, onBack }) => {
         }
     };
 
-    const handleCreateHall = async (e) => {
-        e.preventDefault();
-        setCreating(true);
+    const toggleFloor = (floorNum) => setExpandedFloors(prev => ({ ...prev, [floorNum]: !prev[floorNum] }));
+
+    // Add Floor = increment count by 1
+    const handleAddFloor = async () => {
+        setAddingFloor(true);
+        const newCount = floorCount + 1;
         try {
-            await axios.post(`${API_URL}/workspaces/${workspace.id}/halls`, {
-                ...newHall, building_id: building.id, workspace_id: workspace.id
+            await axios.put(`${API_URL}/workspaces/${workspace.id}/buildings/${building.id}`, {
+                ...building, floors: newCount
             });
-            setNewHall({ id: "", name: "", capacity: 60, rows: 10, columns: 6 });
-            fetchHalls();
-        } catch (err) {
-            showToast("Failed to create hall", "error");
-        } finally {
-            setCreating(false);
+            setFloorCount(newCount);
+            setExpandedFloors(prev => ({ ...prev, [newCount]: true }));
+        } catch (err) { alert("Failed to add floor"); console.error(err); }
+        finally { setAddingFloor(false); }
+    };
+
+    // Delete last floor only (if no rooms on it)
+    const handleDeleteFloor = async (floorNum) => {
+        const roomsOnFloor = rooms.filter(r => Number(r.floor_id) === floorNum);
+        if (roomsOnFloor.length > 0) {
+            alert(`Cannot delete Floor ${floorNum}. It has ${roomsOnFloor.length} room(s). Remove them first.`);
+            return;
         }
-    }
-
-    const handleDeleteHall = async (e, id) => {
-        e.stopPropagation();
-        if (!window.confirm("Delete this hall?")) return;
+        if (!window.confirm(`Delete Floor ${floorNum}?`)) return;
         try {
-            if (!id) {
-                await axios.delete(`${API_URL}/workspaces/${workspace.id}/halls`, { params: { id } });
-            } else {
-                await axios.delete(`${API_URL}/workspaces/${workspace.id}/halls/${id}`);
-            }
-            fetchHalls();
-        } catch (err) { showToast("Delete failed", "error"); }
-    }
+            const newCount = floorCount - 1;
+            await axios.put(`${API_URL}/workspaces/${workspace.id}/buildings/${building.id}`, {
+                ...building, floors: newCount
+            });
+            setFloorCount(newCount);
+            setExpandedFloors(prev => { const n = { ...prev }; delete n[floorNum]; return n; });
+        } catch (err) { alert("Failed to delete floor"); }
+    };
 
-    const startEditHall = (e, h) => {
+    // Room CRUD
+    const handleCreateRoom = async (e, floorNum) => {
+        e.preventDefault();
+        const roomId = newRoom._forFloor === floorNum ? newRoom.id : "";
+        if (!roomId) return;
+        if (rooms.find(r => r.id === roomId)) {
+            alert("Room ID must be unique across the building. This room ID already exists.");
+            return;
+        }
+        setCreatingRoom(true);
+        try {
+            await axios.post(`${API_URL}/workspaces/${workspace.id}/rooms`, {
+                id: roomId,
+                name: (newRoom._forFloor === floorNum ? newRoom.name : "") || "classroom",
+                capacity: newRoom._forFloor === floorNum ? newRoom.capacity : 60,
+                rows: newRoom._forFloor === floorNum ? newRoom.rows : 10,
+                columns: newRoom._forFloor === floorNum ? newRoom.columns : 6,
+                seating_type: newRoom._forFloor === floorNum ? newRoom.seating_type : "Single",
+                building_id: building.id,
+                floor_id: floorNum,
+                workspace_id: workspace.id
+            });
+            setNewRoom({ id: "", name: "", capacity: 60, rows: 10, columns: 6, seating_type: "Single", _forFloor: null });
+            fetchRooms();
+        } catch (err) { alert("Failed to create room"); }
+        finally { setCreatingRoom(false); }
+    };
+
+    const handleDeleteRoom = async (e, id) => {
         e.stopPropagation();
-        setEditingHallId(h.id);
-        setEditHallData({ id: h.id, name: h.name, capacity: h.capacity, rows: h.rows || 10, columns: h.columns || 6 });
-    }
+        if (!window.confirm("Delete this room?")) return;
+        try {
+            await axios.delete(`${API_URL}/workspaces/${workspace.id}/rooms/${id}`);
+            fetchRooms();
+        } catch (err) { alert("Delete failed"); }
+    };
 
-    const cancelEditHall = (e) => {
-        e && e.stopPropagation();
-        setEditingHallId(null);
-        setEditHallData({ id: "", name: "", capacity: 60, rows: 10, columns: 6 });
-    }
+    const startEditRoom = (e, r) => {
+        e.stopPropagation();
+        setEditingRoomId(r.id);
+        setEditRoomData({ id: r.id, name: r.name, capacity: r.capacity, rows: r.rows || 10, columns: r.columns || 6, seating_type: r.seating_type || "Single" });
+    };
 
-    const submitEditHall = async (e) => {
+    const submitEditRoom = async (e) => {
         e.preventDefault();
         try {
-            await axios.put(`${API_URL}/workspaces/${workspace.id}/halls/${editingHallId}`, editHallData);
-            setEditingHallId(null);
-            fetchHalls();
-            showToast("Hall updated", "success");
-        } catch (err) {
-            console.error(err);
-            showToast("Failed to update hall", "error");
-        }
+            const exists = rooms.find(r => r.id === editRoomData.id && editingRoomId !== r.id);
+            if (exists) { alert("Room ID already exists"); return; }
+            await axios.put(`${API_URL}/workspaces/${workspace.id}/rooms/${editingRoomId}`, editRoomData);
+            setEditingRoomId(null);
+            fetchRooms();
+        } catch (err) { alert("Failed to update room"); }
+    };
+
+    if (selectedRoom) {
+        return <RoomView room={selectedRoom} building={building} onBack={() => setSelectedRoom(null)} />;
     }
 
-    if (selectedHall) {
-        return <RoomView hall={selectedHall} building={building} onBack={() => setSelectedHall(null)} />;
-    }
+    // Generate floor numbers array: [1, 2, 3, ..., floorCount]
+    const floorNumbers = Array.from({ length: floorCount }, (_, i) => i + 1);
 
     return (
         <div className="animate-in fade-in slide-in-from-right-8 duration-500">
@@ -334,89 +377,152 @@ const RoomSelectionView = ({ building, onBack }) => {
                 <ArrowRight className="w-4 h-4 rotate-180" /> Back to Campus Map
             </button>
 
-            <h2 className="text-3xl font-bold text-white mb-2">{building.name} <span className="text-gray-500 text-lg font-normal">({building.id})</span></h2>
-            <p className="text-gray-400 mb-8 max-w-2xl">Select a chamber to view seating arrangements or bind new rooms to this structure.</p>
-
-            {/* Create Hall Inline */}
-            <div className="bg-white/5 border border-white/10 p-4 rounded-xl mb-8">
-                <h4 className="text-sm font-semibold text-purple-400 mb-3 uppercase tracking-wider">Add New Chamber</h4>
-                <form onSubmit={handleCreateHall} className="flex gap-4 items-end flex-wrap">
-                    <input className="bg-black/20 border-white/10 rounded p-2 text-white text-sm" placeholder="ID (e.g. 101)" value={newHall.id} onChange={e => setNewHall({ ...newHall, id: e.target.value })} required pattern="\d{3}" title="3 digit number" />
-                    <input className="bg-black/20 border-white/10 rounded p-2 text-white text-sm flex-1 min-w-[200px]" placeholder="Name (e.g. Grand Lecture Hall)" value={newHall.name} onChange={e => setNewHall({ ...newHall, name: e.target.value })} required />
-                    <input type="number" className="bg-black/20 border-white/10 rounded p-2 text-white text-sm w-20" placeholder="Rows" value={newHall.rows} onChange={e => setNewHall({ ...newHall, rows: Number(e.target.value) })} required />
-                    <input type="number" className="bg-black/20 border-white/10 rounded p-2 text-white text-sm w-20" placeholder="Cols" value={newHall.columns} onChange={e => setNewHall({ ...newHall, columns: Number(e.target.value) })} required />
-                    <input type="number" className="bg-black/20 border-white/10 rounded p-2 text-white text-sm w-24" placeholder="Cap" value={newHall.capacity} onChange={e => setNewHall({ ...newHall, capacity: Number(e.target.value) })} required />
-                    <button disabled={creating} className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded text-sm">{creating ? "..." : "Add"}</button>
-                </form>
+            <div className="flex items-center justify-between mb-8">
+                <div>
+                    <h2 className="text-3xl font-bold text-white">{building.name} <span className="text-gray-500 text-lg font-normal">({building.id})</span></h2>
+                    <p className="text-gray-400 max-w-2xl">Manage floors and rooms. <span className="text-purple-400 font-semibold">{floorCount} floor{floorCount !== 1 ? 's' : ''}</span></p>
+                </div>
+                <button
+                    onClick={handleAddFloor}
+                    disabled={addingFloor}
+                    className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-medium shadow-[0_0_15px_rgba(147,51,234,0.4)] hover:shadow-[0_0_25px_rgba(147,51,234,0.6)] transition-all flex items-center gap-2"
+                >
+                    <Plus className="w-4 h-4" />
+                    {addingFloor ? "Adding..." : "Add Floor"}
+                </button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {loading ? (
-                    <div className="col-span-full flex justify-center p-20"><Loader2 className="w-10 h-10 text-purple-500 animate-spin" /></div>
-                ) : (
-                    <>
-                        {halls.map((h, i) => (
-                    <div
-                        key={h.id}
-                        onClick={() => { if (!editingHallId) setSelectedHall(h); }}
-                        className="bg-gray-800/50 hover:bg-purple-900/20 border border-white/10 hover:border-purple-500/50 p-6 rounded-xl cursor-pointer transition-all group relative"
-                    >
-                        {/* Edit & Delete Buttons */}
-                        <div className="absolute top-2 right-2 z-10 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onClick={(e) => startEditHall(e, h)} className="p-1.5 rounded-full bg-black/50 text-white/50 hover:bg-indigo-600 hover:text-white transition-colors">
-                                <Edit2 className="w-3 h-3" />
-                            </button>
-                            <button
-                                onClick={(e) => handleDeleteHall(e, h.id)}
-                                className="p-1.5 rounded-full bg-black/50 text-white/50 hover:bg-red-500 hover:text-white transition-colors"
-                            >
-                                <Trash2 className="w-3 h-3" />
-                            </button>
+            {loading ? (
+                <div className="flex justify-center p-20"><Loader2 className="w-10 h-10 text-purple-500 animate-spin" /></div>
+            ) : (
+                <div className="space-y-4">
+                    {floorNumbers.map(floorNum => {
+                        const floorRooms = rooms.filter(r => Number(r.floor_id) === floorNum);
+                        const isExpanded = expandedFloors[floorNum];
+
+                        return (
+                            <div key={floorNum} className="bg-gray-800/30 border border-white/5 rounded-xl overflow-hidden">
+                                {/* Floor Header */}
+                                <div
+                                    className="bg-gray-800/80 px-5 py-3.5 flex justify-between items-center cursor-pointer hover:bg-gray-700/60 transition-colors"
+                                    onClick={() => toggleFloor(floorNum)}
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {isExpanded
+                                            ? <ChevronDown className="w-5 h-5 text-purple-400" />
+                                            : <ChevronRight className="w-5 h-5 text-gray-400" />
+                                        }
+                                        <h3 className="text-lg font-semibold text-white">Floor {floorNum}</h3>
+                                        <span className="text-xs bg-white/5 text-gray-400 px-2 py-0.5 rounded-full">{floorRooms.length} room{floorRooms.length !== 1 ? 's' : ''}</span>
+                                    </div>
+                                    {/* Only allow deleting the LAST floor */}
+                                    {floorNum === floorCount && (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleDeleteFloor(floorNum); }}
+                                            className="p-1.5 rounded bg-black/50 text-white/50 hover:bg-red-500 hover:text-white transition-colors"
+                                            title="Delete this floor (last floor only)"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Floor Content (rooms) */}
+                                {isExpanded && (
+                                    <div className="p-4 border-t border-white/5 space-y-4">
+                                        {/* Add Room Form */}
+                                        <form onSubmit={(e) => handleCreateRoom(e, floorNum)} className="flex gap-2 items-end flex-wrap bg-black/20 p-3 rounded-lg border border-white/5">
+                                            <div className="flex flex-col">
+                                                <label className="text-[10px] text-gray-500 mb-0.5">Room ID</label>
+                                                <input className="bg-black/40 border border-white/10 rounded p-1.5 text-white text-xs w-24" placeholder="3 digits" value={newRoom._forFloor === floorNum ? newRoom.id : ""} onChange={e => setNewRoom({ ...newRoom, _forFloor: floorNum, id: e.target.value })} required pattern="\d{3}" title="3 digit number" />
+                                            </div>
+                                            <div className="flex flex-col flex-1 min-w-[120px]">
+                                                <label className="text-[10px] text-gray-500 mb-0.5">Name</label>
+                                                <input className="bg-black/40 border border-white/10 rounded p-1.5 text-white text-xs" placeholder="classroom" value={newRoom._forFloor === floorNum ? newRoom.name : ""} onChange={e => setNewRoom({ ...newRoom, _forFloor: floorNum, name: e.target.value })} />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <label className="text-[10px] text-gray-500 mb-0.5">Seating</label>
+                                                <select className="bg-black/40 border border-white/10 rounded p-1.5 text-white text-xs" value={newRoom._forFloor === floorNum ? newRoom.seating_type : "Single"} onChange={e => setNewRoom({ ...newRoom, _forFloor: floorNum, seating_type: e.target.value })}>
+                                                    <option value="Single">Single</option>
+                                                    <option value="Two">Two</option>
+                                                    <option value="Three">Three</option>
+                                                </select>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <label className="text-[10px] text-gray-500 mb-0.5">Rows</label>
+                                                <input type="number" className="bg-black/40 border border-white/10 rounded p-1.5 text-white text-xs w-14" value={newRoom._forFloor === floorNum ? newRoom.rows : 10} onChange={e => setNewRoom({ ...newRoom, _forFloor: floorNum, rows: Number(e.target.value) })} required />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <label className="text-[10px] text-gray-500 mb-0.5">Cols</label>
+                                                <input type="number" className="bg-black/40 border border-white/10 rounded p-1.5 text-white text-xs w-14" value={newRoom._forFloor === floorNum ? newRoom.columns : 6} onChange={e => setNewRoom({ ...newRoom, _forFloor: floorNum, columns: Number(e.target.value) })} required />
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <label className="text-[10px] text-gray-500 mb-0.5">Capacity</label>
+                                                <input type="number" className="bg-black/40 border border-white/10 rounded p-1.5 text-white text-xs w-16" value={newRoom._forFloor === floorNum ? newRoom.capacity : 60} onChange={e => setNewRoom({ ...newRoom, _forFloor: floorNum, capacity: Number(e.target.value) })} required />
+                                            </div>
+                                            <button disabled={creatingRoom} className="bg-purple-600 hover:bg-purple-500 text-white px-3 py-1.5 rounded text-xs font-medium self-end">{creatingRoom ? "..." : "Add Room"}</button>
+                                        </form>
+
+                                        {/* Room Cards */}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                                            {floorRooms.map(r => (
+                                                <div key={r.id} onClick={() => { if (!editingRoomId) setSelectedRoom(r); }} className="bg-gray-800/50 hover:bg-purple-900/20 border border-white/10 hover:border-purple-500/30 p-4 rounded-xl cursor-pointer group relative transition-all">
+                                                    <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button onClick={(e) => startEditRoom(e, r)} className="p-1 rounded bg-black/50 text-white/50 hover:bg-indigo-600 hover:text-white transition-colors"><Edit2 className="w-3 h-3" /></button>
+                                                        <button onClick={(e) => handleDeleteRoom(e, r.id)} className="p-1 rounded bg-black/50 text-white/50 hover:bg-red-500 hover:text-white transition-colors"><Trash2 className="w-3 h-3" /></button>
+                                                    </div>
+                                                    {editingRoomId === r.id ? (
+                                                        <form onSubmit={submitEditRoom} onClick={e => e.stopPropagation()} className="space-y-2">
+                                                            <input value={editRoomData.id} onChange={e => setEditRoomData({ ...editRoomData, id: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-1.5 text-white text-xs" required pattern="\d{3}" />
+                                                            <input value={editRoomData.name} onChange={e => setEditRoomData({ ...editRoomData, name: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-1.5 text-white text-xs" placeholder="Name" />
+                                                            <select value={editRoomData.seating_type} onChange={e => setEditRoomData({ ...editRoomData, seating_type: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-1.5 text-white text-xs">
+                                                                <option value="Single">Single</option>
+                                                                <option value="Two">Two</option>
+                                                                <option value="Three">Three</option>
+                                                            </select>
+                                                            <div className="flex gap-2">
+                                                                <input type="number" value={editRoomData.rows} onChange={e => setEditRoomData({ ...editRoomData, rows: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-1.5 text-white text-xs" placeholder="Rows" />
+                                                                <input type="number" value={editRoomData.columns} onChange={e => setEditRoomData({ ...editRoomData, columns: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-1.5 text-white text-xs" placeholder="Cols" />
+                                                            </div>
+                                                            <input type="number" value={editRoomData.capacity} onChange={e => setEditRoomData({ ...editRoomData, capacity: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-1.5 text-white text-xs" placeholder="Capacity" />
+                                                            <div className="flex gap-2 pt-1">
+                                                                <button type="submit" className="flex-1 bg-green-600 hover:bg-green-500 px-2 py-1 rounded text-xs text-white font-medium">Save</button>
+                                                                <button type="button" onClick={(e) => { e.stopPropagation(); setEditingRoomId(null); }} className="flex-1 bg-gray-600 hover:bg-gray-500 px-2 py-1 rounded text-xs text-white font-medium">Cancel</button>
+                                                            </div>
+                                                        </form>
+                                                    ) : (
+                                                        <>
+                                                            <div className="flex justify-between items-start mb-2">
+                                                                <div className="w-9 h-9 rounded-lg bg-gray-700/50 flex items-center justify-center group-hover:bg-purple-500/20 transition-colors">
+                                                                    <span className="font-mono font-bold text-sm text-white">{r.id}</span>
+                                                                </div>
+                                                                <div className="flex flex-col items-end gap-0.5">
+                                                                    <span className="bg-white/5 text-[10px] px-1.5 py-0.5 rounded text-gray-400">{r.capacity} seats</span>
+                                                                    <span className="text-[10px] text-purple-400 font-medium">{r.seating_type || "Single"}</span>
+                                                                </div>
+                                                            </div>
+                                                            <h4 className="font-medium text-white text-sm">{r.name}</h4>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            {floorRooms.length === 0 && (
+                                                <div className="col-span-full py-6 text-center text-gray-500 text-xs italic">No rooms on this floor yet</div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                    {floorCount === 0 && (
+                        <div className="text-center py-16 text-gray-500">
+                            <p className="text-lg mb-2">No floors yet</p>
+                            <p className="text-sm">Click <span className="text-purple-400 font-semibold">"Add Floor"</span> above to create Floor 1.</p>
                         </div>
-
-                        {editingHallId === h.id ? (
-                            <form onSubmit={submitEditHall} onClick={e => e.stopPropagation()} className="space-y-3">
-                                <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Hall ID</label>
-                                    <input value={editHallData.id} onChange={e => setEditHallData({ ...editHallData, id: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" required pattern="\d{3}" />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Hall Name</label>
-                                    <input value={editHallData.name} onChange={e => setEditHallData({ ...editHallData, name: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" />
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Rows & Columns</label>
-                                    <div className="flex gap-2">
-                                        <input type="number" value={editHallData.rows} onChange={e => setEditHallData({ ...editHallData, rows: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" placeholder="Rows" />
-                                        <input type="number" value={editHallData.columns} onChange={e => setEditHallData({ ...editHallData, columns: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" placeholder="Cols" />
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="text-xs text-gray-400 mb-1 block">Capacity</label>
-                                    <input type="number" value={editHallData.capacity} onChange={e => setEditHallData({ ...editHallData, capacity: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" />
-                                </div>
-                                <div className="flex gap-2 pt-2">
-                                    <button type="submit" onClick={e => e.stopPropagation()} className="flex-1 bg-green-600 hover:bg-green-500 px-3 py-2 rounded text-sm font-medium transition-colors">Save</button>
-                                    <button type="button" onClick={(e) => { e.stopPropagation(); cancelEditHall(e); }} className="flex-1 bg-gray-600 hover:bg-gray-500 px-3 py-2 rounded text-sm font-medium transition-colors">Cancel</button>
-                                </div>
-                            </form>
-                        ) : (
-                            <>
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="w-10 h-10 rounded-lg bg-gray-700/50 flex items-center justify-center group-hover:bg-purple-500/20 group-hover:text-purple-400 transition-colors">
-                                        <span className="font-mono font-bold text-lg">{h.id}</span>
-                                    </div>
-                                    <span className="bg-white/5 text-xs px-2 py-1 rounded text-gray-400">{h.capacity} Seats</span>
-                                </div>
-                                <h4 className="font-semibold text-white">{h.name}</h4>
-                            </>
-                        )}
-                    </div>
-                        ))}
-                        {halls.length === 0 && <div className="col-span-full text-center py-8 text-gray-500 italic">No halls recorded in this building.</div>}
-                    </>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 };

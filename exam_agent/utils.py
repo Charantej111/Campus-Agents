@@ -1,32 +1,6 @@
 import random
 from typing import List
-from .models import Student, Hall, Exam
-
-def mock_students(count: int = 50) -> List[Student]:
-    students = []
-    courses = ["CS101", "CS102", "CS103", "MA101"]
-    for i in range(count):
-        s_id = f"S{1000+i}"
-        name = f"Student_{i}"
-        # Randomly assign 2-3 courses
-        my_courses = random.sample(courses, k=random.randint(2, 3))
-        students.append(Student(id=s_id, name=name, enrolled_courses=my_courses))
-    return students
-
-def mock_halls() -> List[Hall]:
-    return [
-        Hall(id="H101", name="Main Hall A", capacity=20),
-        Hall(id="H102", name="Main Hall B", capacity=20),
-        Hall(id="H201", name="Small Hall", capacity=15)
-    ]
-
-def mock_exams() -> List[Exam]:
-    return [
-        Exam(course_code="CS101", course_name="Intro to CS"),
-        Exam(course_code="CS102", course_name="Data Structures"),
-        Exam(course_code="CS103", course_name="Algorithms"),
-        Exam(course_code="MA101", course_name="Calculus I")
-    ]
+from .models import Student, Room
 
 # --- LLM Utils ---
 from langchain_groq import ChatGroq

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, MapPin, Calendar, Clock, Building2, Armchair } from 'lucide-react';
 
-const SeatVisualization = ({ allocations, halls, timetable, buildings }) => {
+const SeatVisualization = ({ allocations, rooms, timetable, buildings }) => {
     const [selectedExam, setSelectedExam] = useState(timetable[0]?.course_code || "");
     const [hoveredSeat, setHoveredSeat] = useState(null);
 
@@ -15,7 +15,7 @@ const SeatVisualization = ({ allocations, halls, timetable, buildings }) => {
     }, [timetable]);
 
     const examAllocations = allocations.filter(a => a.exam_course_code === selectedExam);
-    const usedHallIds = [...new Set(examAllocations.map(a => a.hall_id))];
+    const usedRoomIds = [...new Set(examAllocations.map(a => a.room_id))];
     const selectedExamData = timetable.find(t => t.course_code === selectedExam);
 
     return (
@@ -73,9 +73,9 @@ const SeatVisualization = ({ allocations, halls, timetable, buildings }) => {
                 </div>
             </motion.div>
 
-            {/* Hall Grid - Theatre Style */}
+            {/* Room Grid - Theatre Style */}
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                {usedHallIds.length === 0 ? (
+                {usedRoomIds.length === 0 ? (
                     <motion.div 
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -85,20 +85,20 @@ const SeatVisualization = ({ allocations, halls, timetable, buildings }) => {
                         <p className="text-white/40 text-lg">No seat allocations found for this examination.</p>
                     </motion.div>
                 ) : (
-                    usedHallIds.map((hallId, idx) => {
-                        const hall = halls.find(h => h.id === hallId);
-                        const hallAllocs = examAllocations.filter(a => a.hall_id === hallId);
+                    usedRoomIds.map((roomId, idx) => {
+                        const room = rooms.find(h => h.id === roomId);
+                        const roomAllocs = examAllocations.filter(a => a.room_id === roomId);
 
                         return (
                             <motion.div
-                                key={hallId}
+                                key={roomId}
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: idx * 0.1 }}
                             >
-                                <TheatreHallView
-                                    hall={hall || { id: hallId, name: `Hall ${hallId}`, capacity: 30 }}
-                                    allocations={hallAllocs}
+                                <TheatreRoomView
+                                    room={room || { id: roomId, name: `Room ${roomId}`, capacity: 30 }}
+                                    allocations={roomAllocs}
                                     buildings={buildings}
                                     onSeatHover={setHoveredSeat}
                                 />
@@ -124,7 +124,7 @@ const SeatVisualization = ({ allocations, halls, timetable, buildings }) => {
                             <div>
                                 <div className="font-display font-bold text-white text-lg">{hoveredSeat.student}</div>
                                 <div className="text-sm text-white/60 font-mono mt-1">Seat: {hoveredSeat.seat}</div>
-                                <div className="text-xs text-white/40 mt-1">{hoveredSeat.hall}</div>
+                                <div className="text-xs text-white/40 mt-1">{hoveredSeat.room}</div>
                             </div>
                         </div>
                     </motion.div>
@@ -157,10 +157,10 @@ const SeatVisualization = ({ allocations, halls, timetable, buildings }) => {
     );
 };
 
-const TheatreHallView = ({ hall, allocations, buildings, onSeatHover }) => {
-    const buildingName = buildings?.find(b => b.id === hall.building_id)?.name || hall.building_id || "Unknown Building";
-    const columns = hall.columns || 6;
-    const capacity = hall.capacity || 30;
+const TheatreRoomView = ({ room, allocations, buildings, onSeatHover }) => {
+    const buildingName = buildings?.find(b => b.id === room.building_id)?.name || room.building_id || "Unknown Building";
+    const columns = room.columns || 6;
+    const capacity = room.capacity || 30;
 
     const seats = Array.from({ length: capacity }, (_, i) => {
         const seatNum = i + 1;
@@ -184,12 +184,12 @@ const TheatreHallView = ({ hall, allocations, buildings, onSeatHover }) => {
             <div className="mb-6 pb-4 border-b border-white/10">
                 <div className="flex items-start justify-between">
                     <div>
-                        <h4 className="font-display font-bold text-2xl text-white mb-1">{hall.name}</h4>
+                        <h4 className="font-display font-bold text-2xl text-white mb-1">{room.name}</h4>
                         <div className="flex items-center gap-2 text-sm">
                             <Building2 className="w-4 h-4 text-purple-400" />
                             <span className="text-purple-400 font-medium">{buildingName}</span>
                             <span className="text-white/30">•</span>
-                            <span className="text-white/50 font-mono">{hall.id}</span>
+                            <span className="text-white/50 font-mono">{room.id}</span>
                         </div>
                     </div>
                     <div className="text-right">
@@ -203,7 +203,7 @@ const TheatreHallView = ({ hall, allocations, buildings, onSeatHover }) => {
             <div className="mb-8 relative">
                 <div className="w-full h-12 bg-gradient-to-b from-white/10 to-transparent rounded-t-3xl border-t border-x border-white/20 flex items-center justify-center relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/5 to-transparent"></div>
-                    <span className="text-white/30 uppercase tracking-[0.3em] text-xs font-display font-bold relative z-10">Examination Hall Front</span>
+                    <span className="text-white/30 uppercase tracking-[0.3em] text-xs font-display font-bold relative z-10">Examination Room Front</span>
                 </div>
                 <div className="h-1 bg-gradient-to-r from-transparent via-indigo-500/50 to-transparent"></div>
             </div>
@@ -222,7 +222,7 @@ const TheatreHallView = ({ hall, allocations, buildings, onSeatHover }) => {
                         onMouseEnter={() => seat.student && onSeatHover({ 
                             student: seat.student, 
                             seat: seat.label,
-                            hall: hall.name 
+                            room: room.name 
                         })}
                         onMouseLeave={() => onSeatHover(null)}
                         className={`

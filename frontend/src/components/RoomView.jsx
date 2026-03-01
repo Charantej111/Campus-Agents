@@ -1,11 +1,11 @@
 import React from 'react';
 import { ArrowLeft, User } from 'lucide-react';
 
-const RoomView = ({ hall, building, onBack }) => {
+const RoomView = ({ room, building, onBack }) => {
     // Generate simple grid based on capacity (assume 6 columns)
     const cols = 6;
-    const rows = Math.ceil(hall.capacity / cols);
-    const seats = Array.from({ length: hall.capacity }, (_, i) => ({
+    const rows = Math.ceil(room.capacity / cols);
+    const seats = Array.from({ length: room.capacity }, (_, i) => ({
         id: `${String.fromCharCode(65 + Math.floor(i / cols))}-${(i % cols) + 1}`,
         status: 'available' // Mock status for now
     }));
@@ -19,8 +19,8 @@ const RoomView = ({ hall, building, onBack }) => {
                     <span className="text-sm uppercase tracking-widest">Return to Building</span>
                 </button>
                 <div className="text-right">
-                    <h2 className="text-2xl font-bold text-white">{hall.name}</h2>
-                    <p className="text-purple-400 font-mono text-sm">{building.name} • {hall.id}</p>
+                    <h2 className="text-2xl font-bold text-white">{room.name}</h2>
+                    <p className="text-purple-400 font-mono text-sm">{building.name} • {room.id}</p>
                 </div>
             </div>
 

@@ -11,7 +11,7 @@ const StudentsManager = () => {
     const { showToast } = useToast();
     const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
-    const [newStudent, setNewStudent] = useState({ id: '', name: '', department_id: '', program: '', enrolled_courses: [] });
+    const [newStudent, setNewStudent] = useState({ id: '', name: '', semester: 1, program_id: '', batch_year: new Date().getFullYear(), enrolled_courses: [] });
     const [creating, setCreating] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [editData, setEditData] = useState({});
@@ -19,6 +19,7 @@ const StudentsManager = () => {
     const [depts, setDepts] = useState([]);
     const [programs, setPrograms] = useState([]);
     const [courses, setCourses] = useState([]);
+    const [filters, setFilters] = useState({ semester: '', program_id: '', batch_year: '' });
 
     useEffect(() => {
         if (workspace) {
@@ -70,7 +71,7 @@ const StudentsManager = () => {
                 ...newStudent,
                 workspace_id: workspace.id
             });
-            setNewStudent({ id: '', name: '', department_id: '', program: '', enrolled_courses: [] });
+            setNewStudent({ id: '', name: '', semester: 1, program_id: '', batch_year: new Date().getFullYear(), enrolled_courses: [] });
             fetchStudents();
             showToast("Student added", "success");
         } catch (err) {
@@ -114,9 +115,9 @@ const StudentsManager = () => {
         }
     };
 
-    const getFilteredCourses = (deptId, programCode) => {
-        if (!deptId || !programCode) return courses;
-        return courses.filter(c => c.department_id === deptId && c.program_code === programCode);
+    const getFilteredCourses = (programId, semester) => {
+        if (!programId) return courses;
+        return courses.filter(c => (c.program_ids || []).includes(programId) && c.semester === semester);
     };
 
     const handleFileUpload = async (e) => {
@@ -142,7 +143,7 @@ const StudentsManager = () => {
     };
 
     const downloadTemplate = () => {
-        const template = "id,name,department_id,program,enrolled_courses\nS001,John Doe,CSE,B.Tech,CS101,CS102\nS002,Jane Smith,ECE,B.Tech,EC101";
+        const template = "id,name,semester,program_id,batch_year,enrolled_courses\nS001,John Doe,1,prog_id_1,2024,CS101,CS102\nS002,Jane Smith,2,prog_id_2,2023,EC101";
         const blob = new Blob([template], { type: 'text/csv' });
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -170,52 +171,110 @@ const StudentsManager = () => {
             </div>
 
             {/* Create Form */}
-            <form onSubmit={handleCreate} className="bg-white/5 p-4 rounded-xl border border-white/10 mb-6 grid grid-cols-1 md:grid-cols-6 gap-4">
-                <input value={newStudent.id} onChange={e => setNewStudent({ ...newStudent, id: e.target.value })} className="bg-black/20 border border-white/10 rounded p-2 text-white text-sm" placeholder="Roll No" required />
-                <input value={newStudent.name} onChange={e => setNewStudent({ ...newStudent, name: e.target.value })} className="bg-black/20 border border-white/10 rounded p-2 text-white text-sm" placeholder="Name" required />
-                <select value={newStudent.department_id} onChange={e => setNewStudent({ ...newStudent, department_id: e.target.value })} className="bg-black/20 border border-white/10 rounded p-2 text-white text-sm" required>
-                    <option value="">Select Dept</option>
-                    {depts.map(d => <option key={d._id || d.id} value={d.id}>{d.name}</option>)}
-                </select>
-                <select value={newStudent.program} onChange={e => setNewStudent({ ...newStudent, program: e.target.value })} className="bg-black/20 border border-white/10 rounded p-2 text-white text-sm" required>
-                    <option value="">Select Program</option>
-                    {programs.map(p => <option key={p._id} value={p.code}>{p.name}</option>)}
-                </select>
-                <div className="relative">
-                    <select 
-                        value="" 
-                        onChange={e => {
-                            if (e.target.value && !newStudent.enrolled_courses.includes(e.target.value)) {
-                                setNewStudent({ ...newStudent, enrolled_courses: [...newStudent.enrolled_courses, e.target.value] });
-                            }
-                        }} 
-                        className="bg-black/20 border border-white/10 rounded p-2 text-white text-sm w-full"
-                    >
-                        <option value="">Add Course</option>
-                        {getFilteredCourses(newStudent.department_id, newStudent.program).map(c => <option key={c._id} value={c.code}>{c.name}</option>)}
-                    </select>
-                    {newStudent.enrolled_courses.length > 0 && (
-                        <div className="absolute -bottom-6 left-0 text-xs text-gray-400 flex gap-1 flex-wrap">
-                            {newStudent.enrolled_courses.map(code => (
-                                <span key={code} className="bg-blue-500/20 px-2 py-0.5 rounded flex items-center gap-1">
-                                    {code}
-                                    <button type="button" onClick={() => setNewStudent({ ...newStudent, enrolled_courses: newStudent.enrolled_courses.filter(c => c !== code) })} className="text-red-400 hover:text-red-300">×</button>
-                                </span>
-                            ))}
-                        </div>
-                    )}
+            <form onSubmit={handleCreate} className="bg-white/5 p-4 rounded-xl border border-white/10 mb-6 flex flex-wrap gap-4 items-end">
+                <div className="w-32">
+                    <label className="block text-xs text-gray-400 mb-1">Roll No</label>
+                    <input
+                        value={newStudent.id}
+                        onChange={e => setNewStudent({ ...newStudent, id: e.target.value })}
+                        className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-sm"
+                        placeholder="BT21..."
+                        required
+                    />
                 </div>
-                <button disabled={creating} className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center justify-center gap-2">
+                <div className="flex-[2_2_0%] min-w-[200px]">
+                    <label className="block text-xs text-gray-400 mb-1">Name</label>
+                    <input
+                        value={newStudent.name}
+                        onChange={e => setNewStudent({ ...newStudent, name: e.target.value })}
+                        className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-sm"
+                        placeholder="Student Name"
+                        required
+                    />
+                </div>
+                <div className="w-24">
+                    <label className="block text-xs text-gray-400 mb-1">Batch Yr</label>
+                    <input
+                        type="number"
+                        value={newStudent.batch_year}
+                        onChange={e => setNewStudent({ ...newStudent, batch_year: Number(e.target.value) })}
+                        className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-sm"
+                        placeholder="2024"
+                        required
+                        min="2000"
+                    />
+                </div>
+                <div className="w-24">
+                    <label className="block text-xs text-gray-400 mb-1">Semester</label>
+                    <input
+                        type="number"
+                        value={newStudent.semester}
+                        onChange={e => setNewStudent({ ...newStudent, semester: Number(e.target.value) })}
+                        className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-sm"
+                        placeholder="1"
+                        required
+                        min="1"
+                    />
+                </div>
+                <div className="flex-[2_2_0%] min-w-[200px]">
+                    <label className="block text-xs text-gray-400 mb-1">Program</label>
+                    <select
+                        value={newStudent.program_id}
+                        onChange={e => {
+                            setNewStudent({
+                                ...newStudent,
+                                program_id: e.target.value
+                            });
+                        }}
+                        className="w-full bg-black/20 border border-white/10 rounded p-2 text-white text-sm"
+                        required
+                    >
+                        <option value="">Select Program</option>
+                        {programs.map(p => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
+                    </select>
+                </div>
+                <button disabled={creating} className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg flex items-center justify-center gap-2 h-9">
                     {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} Add
                 </button>
             </form>
 
             {/* List */}
+            <div className="flex flex-wrap gap-4 mb-4">
+                <select value={filters.semester} onChange={e => setFilters({ ...filters, semester: e.target.value })} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">All Semesters</option>
+                    {[...new Set(students.map(s => s.semester))].sort((a, b) => a - b).map(sem => (
+                        <option key={sem} value={sem}>Semester {sem}</option>
+                    ))}
+                </select>
+                <select value={filters.program_id} onChange={e => setFilters({ ...filters, program_id: e.target.value })} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500 max-w-[200px]">
+                    <option value="">All Programs</option>
+                    {programs.map(p => (
+                        <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>
+                    ))}
+                </select>
+                <select value={filters.batch_year} onChange={e => setFilters({ ...filters, batch_year: e.target.value })} className="bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500">
+                    <option value="">All Batches</option>
+                    {[...new Set(students.map(s => s.batch_year))].filter(Boolean).sort((a, b) => b - a).map(year => (
+                        <option key={year} value={year}>{year}</option>
+                    ))}
+                </select>
+                {(filters.semester || filters.program_id || filters.batch_year) && (
+                    <button onClick={() => setFilters({ semester: '', program_id: '', batch_year: '' })} className="text-sm text-blue-400 hover:text-blue-300">
+                        Clear Filters
+                    </button>
+                )}
+            </div>
+
             {loading ? (
                 <div className="flex justify-center p-12"><Loader2 className="w-6 h-6 animate-spin text-gray-500" /></div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {students.map((student) => (
+                    {students.filter(s => {
+                        if (filters.semester && s.semester !== Number(filters.semester)) return false;
+                        if (filters.program_id && s.program_id !== filters.program_id) return false;
+                        if (filters.batch_year && s.batch_year !== Number(filters.batch_year)) return false;
+                        return true;
+                    }).map((student) => (
                         <div key={student._id || student.id} className="bg-white/5 border border-white/10 p-4 rounded-lg hover:border-blue-500/30 transition-colors group relative">
                             {editingId === (student._id || student.id) ? (
                                 <form onSubmit={submitEdit} onClick={e => e.stopPropagation()} className="space-y-3">
@@ -228,30 +287,42 @@ const StudentsManager = () => {
                                         <input value={editData.name} onChange={e => setEditData({ ...editData, name: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" required />
                                     </div>
                                     <div>
-                                        <label className="text-xs text-gray-400 mb-1 block">Department</label>
-                                        <select value={editData.department_id} onChange={e => setEditData({ ...editData, department_id: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" required>
-                                            {depts.map(d => <option key={d._id || d.id} value={d.id}>{d.name}</option>)}
-                                        </select>
+                                        <label className="text-xs text-gray-400 mb-1 block">Semester</label>
+                                        <input type="number" value={editData.semester} placeholder='Semester' onChange={e => setEditData({ ...editData, semester: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" required min="1" />
+                                    </div>
+                                    <div>
+                                        <label className="text-xs text-gray-400 mb-1 block">Batch Year</label>
+                                        <input type="number" value={editData.batch_year} placeholder='Batch format YYYY' onChange={e => setEditData({ ...editData, batch_year: Number(e.target.value) })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" required min="2000" />
                                     </div>
                                     <div>
                                         <label className="text-xs text-gray-400 mb-1 block">Program</label>
-                                        <select value={editData.program} onChange={e => setEditData({ ...editData, program: e.target.value })} className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm" required>
-                                            {programs.map(p => <option key={p._id} value={p.code}>{p.name}</option>)}
+                                        <select
+                                            value={editData.program_id}
+                                            onChange={e => {
+                                                setEditData({
+                                                    ...editData,
+                                                    program_id: e.target.value
+                                                });
+                                            }}
+                                            className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm"
+                                            required
+                                        >
+                                            {programs.map(p => <option key={p._id || p.id} value={p._id || p.id}>{p.name}</option>)}
                                         </select>
                                     </div>
                                     <div>
                                         <label className="text-xs text-gray-400 mb-1 block">Courses</label>
-                                        <select 
-                                            value="" 
+                                        <select
+                                            value=""
                                             onChange={e => {
                                                 if (e.target.value && !editData.enrolled_courses?.includes(e.target.value)) {
                                                     setEditData({ ...editData, enrolled_courses: [...(editData.enrolled_courses || []), e.target.value] });
                                                 }
-                                            }} 
+                                            }}
                                             className="w-full bg-black/40 border border-white/20 rounded p-2 text-white text-sm"
                                         >
                                             <option value="">Add Course</option>
-                                            {getFilteredCourses(editData.department_id, editData.program).map(c => <option key={c._id} value={c.code}>{c.name}</option>)}
+                                            {getFilteredCourses(editData.program_id, editData.semester).map(c => <option key={c._id} value={c.code}>{c.name}</option>)}
                                         </select>
                                         {editData.enrolled_courses?.length > 0 && (
                                             <div className="mt-2 flex gap-1 flex-wrap">
@@ -281,11 +352,13 @@ const StudentsManager = () => {
                                     </div>
                                     <div className="flex justify-between items-start mb-2 pr-8">
                                         <span className="font-mono text-xs bg-blue-500/10 text-blue-400 px-2 py-1 rounded">{student.id}</span>
-                                        <span className="text-xs text-gray-500">{student.department_id}</span>
+                                        <span className="text-xs text-gray-400">
+                                            Sem {student.semester} • {programs.find(p => (p._id || p.id) === student.program_id)?.department_id}
+                                        </span>
                                     </div>
                                     <h4 className="font-semibold text-white">{student.name}</h4>
                                     <div className="mt-2 text-xs text-gray-500">
-                                        <div>Program: {student.program}</div>
+                                        <div>Program: {programs.find(p => (p._id || p.id) === student.program_id)?.name || 'Unknown'}</div>
                                         {student.enrolled_courses?.length > 0 && (
                                             <div className="mt-1">Courses: {student.enrolled_courses.join(', ')}</div>
                                         )}

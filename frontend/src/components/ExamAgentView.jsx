@@ -182,14 +182,14 @@ const ExamAgentView = () => {
                         )}
                         {activeTab === 'allocations' && (
                             <Table
-                                headers={['Student', 'Exam', 'Hall', 'Seat']}
-                                rows={data.allocations.map(a => [a.student_id, a.exam_course_code, a.hall_id, a.seat_number])}
+                                headers={['Student', 'Exam', 'Room', 'Seat']}
+                                rows={data.allocations.map(a => [a.student_id, a.exam_course_code, a.room_id, a.seat_number])}
                             />
                         )}
                         {activeTab === 'visual' && (
                             <SeatVisualization
                                 allocations={data.allocations}
-                                halls={data.halls || []}
+                                rooms={data.rooms || []}
                                 timetable={data.timetable}
                                 buildings={buildings}
                             />

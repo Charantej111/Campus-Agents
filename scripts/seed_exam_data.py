@@ -6,7 +6,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from db import get_database, create_user, create_workspace
-from exam_agent.models import Building, Department, Hall, Student, User, Workspace
+from exam_agent.models import Building, Department, Room, Student, User, Workspace
 from auth_utils import get_password_hash
 
 async def seed_data():
@@ -18,7 +18,7 @@ async def seed_data():
     await db.workspaces.delete_many({})
     await db.departments.delete_many({})
     await db.buildings.delete_many({})
-    await db.halls.delete_many({})
+    await db.rooms.delete_many({})
     await db.students.delete_many({})
     await db.invitations.delete_many({})
 
@@ -59,19 +59,19 @@ async def seed_data():
     print("Seeding Buildings...")
     await db.buildings.insert_many([b.model_dump() for b in buildings])
     
-    # --- Halls ---
-    halls = [
-        # BGB Halls
-        Hall(id="101", name="BGB Hall 101", capacity=30, building_id="BGB", workspace_id=workspace_id),
-        Hall(id="102", name="BGB Hall 102", capacity=30, building_id="BGB", workspace_id=workspace_id),
-        Hall(id="201", name="BGB Hall 201", capacity=40, building_id="BGB", workspace_id=workspace_id),
-        # SRB Halls
-        Hall(id="105", name="SRB Seminar Hall", capacity=50, building_id="SRB", workspace_id=workspace_id),
-        Hall(id="210", name="SRB Conf Room", capacity=20, building_id="SRB", workspace_id=workspace_id)
+    # --- Rooms ---
+    rooms = [
+        # BGB Rooms
+        Room(id="101", name="BGB Room 101", capacity=30, building_id="BGB", workspace_id=workspace_id),
+        Room(id="102", name="BGB Room 102", capacity=30, building_id="BGB", workspace_id=workspace_id),
+        Room(id="201", name="BGB Room 201", capacity=40, building_id="BGB", workspace_id=workspace_id),
+        # SRB Rooms
+        Room(id="105", name="SRB Seminar Room", capacity=50, building_id="SRB", workspace_id=workspace_id),
+        Room(id="210", name="SRB Conf Room", capacity=20, building_id="SRB", workspace_id=workspace_id)
     ]
     
-    print("Seeding Halls...")
-    await db.halls.insert_many([h.model_dump() for h in halls])
+    print("Seeding Rooms...")
+    await db.rooms.insert_many([h.model_dump() for h in rooms])
     
     # --- Students ---
     students = []

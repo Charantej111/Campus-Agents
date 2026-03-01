@@ -1,24 +1,21 @@
 from typing import List, TypedDict, Optional, Any
-from .models import Student, Hall, Exam, TimetableEntry, SeatAllocation
+from .models import Student, ExamCycle, TimetableEntry, CalendarEvent, Course
 
-class ExamState(TypedDict):
+class SchedulingState(TypedDict):
     # Input
-    request: str
-    workspace_id: str # Added workspace context
+    workspace_id: str
+    request_data: dict # dict representation of ExamRequest
     
     # Context Data
     students: List[Student]
-    halls: List[Hall]
-    exams: List[Exam]
+    courses: List[Course]  # Courses belonging to this exam cycle
+    exam_cycle: ExamCycle
+    holidays: List[CalendarEvent]
     
-    # Intermediate/Output
+    # Output
     timetable: List[TimetableEntry]
-    allocations: List[SeatAllocation]
     conflicts: List[str]
     
     # Flow Control
-    status: str # 'planning', 'allocating', 'complete', 'error'
+    status: str
     errors: List[str]
-    
-    # Coordinator communication (optional)
-    messages: List[Any]

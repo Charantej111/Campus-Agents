@@ -62,29 +62,34 @@ async def get_generation_history(limit: int = 10):
 
 # --- Exam Agent DB Helpers ---
 
-async def get_all_students(workspace_id: str, limit: int = 100):
+async def get_all_students(workspace_id: str):
     db = get_database()
     if db is None:
         raise RuntimeError("Database connection failed")
-    cursor = db.students.find({"workspace_id": workspace_id}).limit(limit)
+    cursor = db.students.find({"workspace_id": workspace_id})
     students = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
-        if "department_id" not in doc: doc["department_id"] = "Unknown"
-        if "program" not in doc: doc["program"] = "Unknown"
+        # Ensure default values are filled for old mock data
+        if "program_id" not in doc:
+            doc["program_id"] = "Unknown"
+        if "semester" not in doc:
+            doc["semester"] = 1
+        if "batch_year" not in doc:
+            doc["batch_year"] = datetime.utcnow().year
         students.append(doc)
     return students
 
-async def get_all_halls(workspace_id: str):
+async def get_all_rooms(workspace_id: str):
     db = get_database()
     if db is None:
         raise RuntimeError("Database connection failed")
-    cursor = db.halls.find({"workspace_id": workspace_id})
-    halls = []
+    cursor = db.rooms.find({"workspace_id": workspace_id})
+    rooms = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
-        halls.append(doc)
-    return halls
+        rooms.append(doc)
+    return rooms
 
 async def get_all_buildings(workspace_id: str):
     db = get_database()
@@ -108,6 +113,17 @@ async def get_all_departments(workspace_id: str):
         depts.append(doc)
     return depts
 
+async def get_all_degrees(workspace_id: str):
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    cursor = db.degrees.find({"workspace_id": workspace_id})
+    degrees = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        degrees.append(doc)
+    return degrees
+
 async def create_building(data: dict) -> str:
     db = get_database()
     if db is None:
@@ -115,11 +131,11 @@ async def create_building(data: dict) -> str:
     result = await db.buildings.insert_one(data)
     return str(result.inserted_id)
 
-async def create_hall(data: dict) -> str:
+async def create_room(data: dict) -> str:
     db = get_database()
     if db is None:
         raise RuntimeError("Database connection failed")
-    result = await db.halls.insert_one(data)
+    result = await db.rooms.insert_one(data)
     return str(result.inserted_id)
 
 async def create_department(data: dict) -> str:
@@ -129,6 +145,13 @@ async def create_department(data: dict) -> str:
     result = await db.departments.insert_one(data)
     return str(result.inserted_id)
 
+async def create_degree(data: dict) -> str:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    result = await db.degrees.insert_one(data)
+    return str(result.inserted_id)
+
 async def create_student(data: dict) -> str:
     db = get_database()
     if db is None:
@@ -136,34 +159,81 @@ async def create_student(data: dict) -> str:
     result = await db.students.insert_one(data)
     return str(result.inserted_id)
 
-async def get_halls_by_building(workspace_id: str, building_id: str):
+async def get_rooms_by_building(workspace_id: str, building_id: str):
     db = get_database()
     if db is None:
         raise RuntimeError("Database connection failed")
-    cursor = db.halls.find({"workspace_id": workspace_id, "building_id": building_id})
-    halls = []
+    cursor = db.rooms.find({"workspace_id": workspace_id, "building_id": building_id})
+    rooms = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
-        halls.append(doc)
-    return halls
+        rooms.append(doc)
+    return rooms
 
-async def create_exam(data: dict) -> str:
+async def create_exam_cycle(data: dict) -> str:
     db = get_database()
     if db is None:
         raise RuntimeError("Database connection failed")
-    result = await db.exams.insert_one(data)
+    result = await db.exam_cycles.insert_one(data)
     return str(result.inserted_id)
 
-async def get_all_exams(workspace_id: str):
+async def get_all_exam_cycles(workspace_id: str):
     db = get_database()
     if db is None:
         raise RuntimeError("Database connection failed")
-    cursor = db.exams.find({"workspace_id": workspace_id})
-    exams = []
+    cursor = db.exam_cycles.find({"workspace_id": workspace_id})
+    cycles = []
     async for doc in cursor:
         doc["_id"] = str(doc["_id"])
-        exams.append(doc)
-    return exams
+        cycles.append(doc)
+    return cycles
+
+async def create_calendar_event(data: dict) -> str:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    result = await db.calendar_events.insert_one(data)
+    return str(result.inserted_id)
+
+import datetime
+
+async def get_calendar_events(workspace_id: str):
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    cursor = db.calendar_events.find({"workspace_id": workspace_id})
+    events = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        events.append(doc)
+        
+    # Generate dynamic holidays (Sundays and Jan 1st for +/- 3 years)
+    current_year = datetime.datetime.now().year
+    dynamic_events = []
+    
+    for year in range(current_year - 3, current_year + 4):
+        # Add Jan 1st
+        dynamic_events.append({
+            "_id": f"new_year_{year}",
+            "title": "New Year's Day",
+            "date": f"{year}-01-01",
+            "type": "holiday",
+            "workspace_id": workspace_id,
+        })
+        # Add all Sundays
+        d = datetime.date(year, 1, 1)
+        d += datetime.timedelta(days=6 - d.weekday()) # First Sunday
+        while d.year == year:
+            dynamic_events.append({
+                "_id": f"sunday_{d.isoformat()}",
+                "title": "Sunday",
+                "date": d.isoformat(),
+                "type": "holiday",
+                "workspace_id": workspace_id,
+            })
+            d += datetime.timedelta(days=7)
+            
+    return events + dynamic_events
 
 # Course is effectively represented by "exam" data in the current seed but let's separate if needed.
 # For now, "Course" == "Subject" often. Let's assume we manage "Courses" metadata separately.
@@ -314,6 +384,13 @@ async def delete_document(collection_name: str, doc_id: str, workspace_id: str) 
     result = await db[collection_name].delete_one(query)
     return result.deleted_count > 0
 
+async def delete_all_documents(collection_name: str, workspace_id: str) -> bool:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    result = await db[collection_name].delete_many({"workspace_id": workspace_id})
+    return result.deleted_count > 0
+
 async def update_document(collection_name: str, doc_id: str, data: dict, workspace_id: str) -> bool:
     db = get_database()
     if db is None:
@@ -359,10 +436,11 @@ async def save_exam_plan(workspace_id: str, plan_data: dict) -> str:
     if db is None:
          raise RuntimeError("Database connection failed")
     
+    import datetime as dt
     document = {
         **plan_data,
         "workspace_id": workspace_id,
-        "created_at": datetime.utcnow()
+        "created_at": dt.datetime.utcnow()
     }
     result = await db.exam_plans.insert_one(document)
     return str(result.inserted_id)

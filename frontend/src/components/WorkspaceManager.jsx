@@ -3,7 +3,8 @@ import BuildingsView from './BuildingsView';
 import AcademicManager from './AcademicManager';
 import StudentsManager from './StudentsManager';
 import OrganizationManager from './OrganizationManager';
-import { Map, BookOpen, Layers, User, Users } from 'lucide-react';
+import CalendarManager from './CalendarManager';
+import { Map, BookOpen, Layers, User, Users, Calendar } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 
@@ -45,6 +46,12 @@ const WorkspaceManager = () => {
                 >
                     <User className="w-4 h-4" /> Team & Invite
                 </button>
+                <button
+                    onClick={() => setActiveTab('calendar')}
+                    className={`flex-1 min-w-[120px] py-3 rounded-lg text-sm font-medium flex items-center justify-center gap-2 transition-all ${activeTab === 'calendar' ? 'bg-rose-600 text-white shadow-lg shadow-rose-900/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                    <Calendar className="w-4 h-4" /> Calendar
+                </button>
             </div>
 
             {/* Content Area */}
@@ -53,6 +60,7 @@ const WorkspaceManager = () => {
                 {activeTab === 'academics' && <AcademicManager onNavigate={setActiveTab} />}
                 {activeTab === 'students' && <StudentsManager />}
                 {activeTab === 'organization' && <OrganizationManager />}
+                {activeTab === 'calendar' && <CalendarManager />}
                 {activeTab === 'settings' && <InviteManager workspace={workspace} />}
             </div>
         </div>

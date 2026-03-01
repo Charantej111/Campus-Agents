@@ -16,22 +16,22 @@ import uvicorn
 from dotenv import load_dotenv
 
 # --- Internal Imports ---
-from placement_cell_agent.graph import graph
 from placement_cell_agent.models import InterviewRound, MockTest, Question
-from exam_agent.graph import exam_graph
-from exam_agent.models import Building, Hall, Department, Student, Exam, Course, Program
+from exam_agent.graph import scheduling_graph
+from exam_agent.models import Building, Room, Department, Student, ExamCycle, Course, Program, Degree, CalendarEvent
 from db import (
     save_generation_to_db, get_generation_history,
     create_user, get_user_by_email,
     create_workspace, get_workspaces_for_user, get_workspace_by_id, add_member_to_workspace,
     update_workspace, delete_workspace,
     create_invitation, get_invitation_by_token, update_invitation_status,
-    get_all_buildings, get_all_halls, get_all_departments, get_all_students,
-    create_building, create_hall, create_department, create_student,
-    get_halls_by_building, create_exam, get_all_exams, create_course, get_all_courses,
-    create_program, get_all_programs,
+    create_building, create_room, create_department, create_student,
+    get_all_buildings, get_all_rooms, get_all_departments, get_all_students,
+    create_exam_cycle, get_all_exam_cycles, create_course, get_all_courses,
+    create_program, get_all_programs, create_degree, get_all_degrees,
+    get_database, get_latest_exam_plan, save_exam_plan,
+    create_calendar_event, get_calendar_events,
     delete_document, update_document,
-    save_exam_plan, get_latest_exam_plan
 )
 # ... imports ...
 
@@ -115,13 +115,33 @@ class AgentResponse(BaseModel):
     created_at: Optional[str] = None
 
 class ExamRequest(BaseModel):
-    request_text: str = "Schedule upcoming exams"
-    workspace_id: str # Required now
+    workspace_id: str
+    exam_cycle_id: str
+    gap_between_exams: int = 1
+    allow_two_exams_per_day: bool = False
+    morning_slot_start: str = "09:00"
+    morning_slot_end: str = "12:00"
+    afternoon_slot_start: str = "14:00"
+    afternoon_slot_end: str = "17:00"
+    start_date: str
+    end_date: Optional[str] = None
+    custom_instructions: str = ""
+    consider_holidays: bool = True
+    max_exam_duration_hours: int = 3
+    min_exam_duration_hours: int = 1
+    max_exams_per_day: int = 2
+    max_exams_per_student_per_day: int = 1
+    buffer_days_before_first_exam: int = 0
+    buffer_days_after_last_exam: int = 0
+    prioritize_large_exams_first: bool = True
+    distribute_exams_evenly: bool = True
+    avoid_consecutive_days_for_same_course: bool = True
+    avoid_weekends: bool = True
+    specific_course_dates: Optional[Dict[str, str]] = None # e.g., {"CS101": "2024-05-10"}
+    specific_course_slots: Optional[Dict[str, str]] = None # e.g., {"CS101": "morning"}
 
 class ExamResponse(BaseModel):
     timetable: List[Dict[str, Any]]
-    allocations: List[Dict[str, Any]]
-    halls: List[Dict[str, Any]] = [] 
     conflicts: List[str]
     status: str
     errors: List[str]
@@ -274,7 +294,7 @@ async def join_workspace(token: str, current_user: dict = Depends(get_current_us
 async def list_buildings(workspace_id: str, current_user: dict = Depends(get_current_user)):
     return await get_all_buildings(workspace_id)
 
-@app.post("/workspaces/{workspace_id}/buildings", response_model=Dict[str, str])
+@app.post("/workspaces/{workspace_id}/buildings", response_model=Dict[str, Any])
 async def add_building(workspace_id: str, building: Building, current_user: dict = Depends(get_current_user)):
     if building.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Workspace ID mismatch")
@@ -284,51 +304,141 @@ async def add_building(workspace_id: str, building: Building, current_user: dict
     id = await create_building(building.model_dump())
     return {"id": id}
 
-@app.get("/workspaces/{workspace_id}/halls", response_model=List[Hall])
-async def list_halls(workspace_id: str, current_user: dict = Depends(get_current_user)):
-    return await get_all_halls(workspace_id)
+@app.get("/workspaces/{workspace_id}/rooms", response_model=List[Room])
+async def list_rooms(workspace_id: str, current_user: dict = Depends(get_current_user)):
+    return await get_all_rooms(workspace_id)
 
-@app.post("/workspaces/{workspace_id}/halls", response_model=Dict[str, str])
-async def add_hall(workspace_id: str, hall: Hall, current_user: dict = Depends(get_current_user)):
-    if hall.workspace_id != workspace_id:
+@app.post("/workspaces/{workspace_id}/rooms", response_model=Dict[str, Any])
+async def add_room(workspace_id: str, room: Room, current_user: dict = Depends(get_current_user)):
+    if room.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Workspace ID mismatch")
     # Validate non-empty id/name
-    if not hall.id or not hall.id.strip() or not hall.name or not hall.name.strip():
-        raise HTTPException(status_code=400, detail="Hall id and name must be non-empty")
-    id = await create_hall(hall.model_dump())
+    if not room.id or not room.id.strip() or not room.name or not room.name.strip():
+        raise HTTPException(status_code=400, detail="Room id and name must be non-empty")
+    id = await create_room(room.model_dump())
     return {"id": id}
 
 @app.get("/workspaces/{workspace_id}/departments", response_model=List[Department])
 async def list_departments(workspace_id: str, current_user: dict = Depends(get_current_user)):
     return await get_all_departments(workspace_id)
 
-@app.post("/workspaces/{workspace_id}/departments", response_model=Dict[str, str])
+@app.post("/workspaces/{workspace_id}/departments", response_model=Dict[str, Any])
 async def add_department(workspace_id: str, dept: Department, current_user: dict = Depends(get_current_user)):
     if dept.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Workspace ID mismatch")
     id = await create_department(dept.model_dump())
     return {"id": id}
 
-@app.get("/workspaces/{workspace_id}/buildings/{building_id}/halls", response_model=List[Hall])
-async def list_halls_in_building(workspace_id: str, building_id: str, current_user: dict = Depends(get_current_user)):
-    return await get_halls_by_building(workspace_id, building_id)
+@app.get("/workspaces/{workspace_id}/degrees", response_model=List[Degree])
+async def list_degrees(workspace_id: str, current_user: dict = Depends(get_current_user)):
+    return await get_all_degrees(workspace_id)
 
-@app.get("/workspaces/{workspace_id}/exams", response_model=List[Exam])
-async def list_exams(workspace_id: str, current_user: dict = Depends(get_current_user)):
-    return await get_all_exams(workspace_id)
-
-@app.post("/workspaces/{workspace_id}/exams", response_model=Dict[str, str])
-async def add_exam(workspace_id: str, exam: Exam, current_user: dict = Depends(get_current_user)):
-    if exam.workspace_id != workspace_id:
+@app.post("/workspaces/{workspace_id}/degrees", response_model=Dict[str, Any])
+async def add_degree(workspace_id: str, degree: Degree, current_user: dict = Depends(get_current_user)):
+    if degree.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Workspace ID mismatch")
-    id = await create_exam(exam.model_dump())
+    id = await create_degree(degree.model_dump())
     return {"id": id}
+
+@app.get("/workspaces/{workspace_id}/buildings/{building_id}/rooms", response_model=List[Room])
+async def list_rooms_in_building(workspace_id: str, building_id: str, current_user: dict = Depends(get_current_user)):
+    from db import get_rooms_by_building
+    return await get_rooms_by_building(workspace_id, building_id)
+
+# --- Calendar API ---
+
+@app.post("/workspaces/{workspace_id}/calendar/events", response_model=Dict[str, Any])
+async def add_calendar_event(workspace_id: str, event: CalendarEvent, current_user: dict = Depends(get_current_user)):
+    try:
+        event_dict = event.model_dump()
+        event_dict["workspace_id"] = workspace_id
+        event_id = await create_calendar_event(event_dict)
+        return {"id": event_id, "message": "Calendar event added"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/workspaces/{workspace_id}/calendar", response_model=List[Dict[str, Any]])
+async def list_calendar_events(workspace_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        events = await get_calendar_events(workspace_id)
+        # Dynamic Public Holidays could be injected here
+        # Return merged events
+        for e in events:
+             e["id"] = e.pop("_id", None)
+        return events
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/workspaces/{workspace_id}/calendar/{event_id}", response_model=Dict[str, Any])
+async def delete_calendar_event(workspace_id: str, event_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        if event_id.startswith("sunday_") or event_id.startswith("new_year_"):
+            raise HTTPException(status_code=400, detail="Cannot delete default system holidays")
+        
+        db = get_database()
+        from bson import ObjectId
+        await db.calendar_events.delete_one({"_id": ObjectId(event_id), "workspace_id": workspace_id})
+        return {"message": "Event deleted"}
+    except Exception as e:
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Exam Cycles API ---
+
+async def compute_cycle_data(workspace_id: str, semester: int, batch_year: int):
+    """Helper to auto-compute students and programs for an exam cycle."""
+    students_in_workspace = await get_all_students(workspace_id)
+    
+    # Filter students by semester and batch_year
+    matching_students = [s for s in students_in_workspace if s.get("semester") == semester and s.get("batch_year") == batch_year]
+    
+    # Extract unique program_ids from matching students, ensuring they are strings
+    detected_program_ids = sorted(list(set([str(s.get("program_id")) for s in matching_students if s.get("program_id")])))
+    
+    return {
+        "student_ids": [str(s["_id"]) for s in matching_students],
+        "program_ids": detected_program_ids,
+        "matching_students_count": len(matching_students),
+        "detected_programs_count": len(detected_program_ids)
+    }
+
+@app.post("/workspaces/{workspace_id}/exam_cycles", response_model=Dict[str, Any])
+async def add_exam_cycle(workspace_id: str, cycle: ExamCycle, current_user: dict = Depends(get_current_user)):
+    try:
+        cycle_dict = cycle.model_dump()
+        cycle_dict["workspace_id"] = workspace_id
+        
+        # Auto-compute students and programs
+        computed = await compute_cycle_data(workspace_id, cycle.semester, cycle.batch_year)
+        cycle_dict["student_ids"] = computed["student_ids"]
+        cycle_dict["program_ids"] = computed["program_ids"]
+        
+        cycle_id = await create_exam_cycle(cycle_dict)
+        return {
+            "id": cycle_id, 
+            "message": "Exam Cycle created", 
+            "students_added": computed["matching_students_count"],
+            "programs_detected": computed["detected_programs_count"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/workspaces/{workspace_id}/exam_cycles", response_model=List[Dict[str, Any]])
+async def list_exam_cycles(workspace_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        cycles = await get_all_exam_cycles(workspace_id)
+        for c in cycles:
+             c["id"] = c.pop("_id", None)
+        return cycles
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/workspaces/{workspace_id}/programs", response_model=List[Program])
 async def list_programs(workspace_id: str, current_user: dict = Depends(get_current_user)):
     return await get_all_programs(workspace_id)
 
-@app.post("/workspaces/{workspace_id}/programs", response_model=Dict[str, str])
+@app.post("/workspaces/{workspace_id}/programs", response_model=Dict[str, Any])
 async def add_program(workspace_id: str, program: Program, current_user: dict = Depends(get_current_user)):
     if program.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Workspace ID mismatch")
@@ -339,7 +449,14 @@ async def add_program(workspace_id: str, program: Program, current_user: dict = 
 async def list_courses(workspace_id: str, current_user: dict = Depends(get_current_user)):
     return await get_all_courses(workspace_id)
 
-@app.post("/workspaces/{workspace_id}/students", response_model=Dict[str, str])
+@app.post("/workspaces/{workspace_id}/courses", response_model=Dict[str, Any])
+async def add_course(workspace_id: str, course: Course, current_user: dict = Depends(get_current_user)):
+    if course.workspace_id != workspace_id:
+        raise HTTPException(status_code=400, detail="Workspace ID mismatch")
+    id = await create_course(course.model_dump())
+    return {"id": id}
+
+@app.post("/workspaces/{workspace_id}/students", response_model=Dict[str, Any])
 async def add_student(workspace_id: str, student: Student, current_user: dict = Depends(get_current_user)):
     if student.workspace_id != workspace_id:
         raise HTTPException(status_code=400, detail="Workspace ID mismatch")
@@ -350,6 +467,17 @@ async def add_student(workspace_id: str, student: Student, current_user: dict = 
 async def list_students(workspace_id: str, current_user: dict = Depends(get_current_user)):
     return await get_all_students(workspace_id)
 
+@app.get("/workspaces/{workspace_id}/batches", response_model=List[int])
+async def list_batches(workspace_id: str, current_user: dict = Depends(get_current_user)):
+    try:
+        db = get_database()
+        if db is None:
+            raise RuntimeError("Database connection failed")
+        batches = await db.students.distinct("batch_year", {"workspace_id": workspace_id})
+        return sorted([b for b in batches if isinstance(b, int)])
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/workspaces/{workspace_id}/students/import")
 async def import_students(workspace_id: str, file: UploadFile = File(...), current_user: dict = Depends(get_current_user)):
     try:
@@ -357,7 +485,7 @@ async def import_students(workspace_id: str, file: UploadFile = File(...), curre
         df = pd.read_excel(io.BytesIO(contents))
         
         # Validate required columns
-        required_cols = ['id', 'name', 'department_id']
+        required_cols = ['id', 'name', 'semester']
         if not all(col in df.columns for col in required_cols):
             raise HTTPException(status_code=400, detail=f"Excel must have columns: {', '.join(required_cols)}")
         
@@ -366,8 +494,8 @@ async def import_students(workspace_id: str, file: UploadFile = File(...), curre
             student_data = {
                 "id": str(row['id']),
                 "name": str(row['name']),
-                "department_id": str(row['department_id']),
-                "program": str(row.get('program', 'Unknown')),
+                "semester": int(row['semester']) if pd.notna(row['semester']) else 1,
+                "program_id": str(row.get('program_id', 'Unknown')),
                 "enrolled_courses": str(row.get('enrolled_courses', '')).split(',') if pd.notna(row.get('enrolled_courses')) else [],
                 "workspace_id": workspace_id
             }
@@ -385,7 +513,7 @@ async def delete_item(workspace_id: str, resource_type: str, item_id: str, curre
     # Simple mapping for resource_type to collection name
     # "courses" -> "courses", "exams" -> "exams", "buildings" -> "buildings", etc.
     # Validate resource type
-    valid_types = ["courses", "exams", "buildings", "halls", "departments", "students", "programs"]
+    valid_types = ["courses", "exams", "exam_cycles", "buildings", "rooms", "departments", "students", "programs", "degrees"]
     if resource_type not in valid_types:
         raise HTTPException(status_code=400, detail="Invalid resource type")
         
@@ -398,9 +526,14 @@ async def delete_item(workspace_id: str, resource_type: str, item_id: str, curre
 @app.delete("/workspaces/{workspace_id}/{resource_type}")
 async def delete_item_by_query(workspace_id: str, resource_type: str, id: Optional[str] = None, current_user: dict = Depends(get_current_user)):
     # Allow deletion by query parameter `id` when path item_id is not convenient (e.g., empty string ids)
-    valid_types = ["courses", "exams", "buildings", "halls", "departments", "students", "programs"]
+    valid_types = ["courses", "exams", "exam_cycles", "buildings", "rooms", "departments", "students", "programs", "degrees", "exam_plans"]
     if resource_type not in valid_types:
         raise HTTPException(status_code=400, detail="Invalid resource type")
+
+    if id == "all":
+        from db import delete_all_documents
+        success = await delete_all_documents(resource_type, workspace_id)
+        return {"message": f"Deleted all {resource_type} successfully"}
 
     if id is None:
         raise HTTPException(status_code=400, detail="Missing id query parameter")
@@ -412,12 +545,21 @@ async def delete_item_by_query(workspace_id: str, resource_type: str, id: Option
 
 @app.put("/workspaces/{workspace_id}/{resource_type}/{item_id}")
 async def update_item(workspace_id: str, resource_type: str, item_id: str, data: Dict[str, Any], current_user: dict = Depends(get_current_user)):
-    valid_types = ["courses", "exams", "buildings", "halls", "departments", "students", "programs"]
+    valid_types = ["courses", "exams", "exam_cycles", "buildings", "rooms", "departments", "students", "programs", "degrees"]
     if resource_type not in valid_types:
         raise HTTPException(status_code=400, detail="Invalid resource type")
     
     # Ensure workspace_id in data matches
     data["workspace_id"] = workspace_id
+
+    # If updating an exam cycle, re-compute student and program lists
+    if resource_type == "exam_cycles":
+        semester = data.get("semester")
+        batch_year = data.get("batch_year")
+        if semester is not None and batch_year is not None:
+            computed = await compute_cycle_data(workspace_id, semester, batch_year)
+            data["student_ids"] = computed["student_ids"]
+            data["program_ids"] = computed["program_ids"]
     
     try:
         success = await update_document(resource_type, item_id, data, workspace_id)
@@ -478,8 +620,6 @@ async def get_exam_plan(workspace_id: str, current_user: dict = Depends(get_curr
         if not plan:
             return {
                 "timetable": [],
-                "allocations": [],
-                "halls": [],
                 "conflicts": [],
                 "status": "start",
                 "errors": []
@@ -494,51 +634,80 @@ async def get_exam_plan(workspace_id: str, current_user: dict = Depends(get_curr
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/workspaces/{workspace_id}/exam_plan", response_model=Dict[str, Any])
+async def save_exam_plan_endpoint(workspace_id: str, plan: Dict[str, Any], current_user: dict = Depends(get_current_user)):
+    try:
+        from db import save_exam_plan
+        saved_id = await save_exam_plan(workspace_id, plan)
+        return {"id": saved_id, "message": "Exam plan saved successfully"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/exam/schedule", response_model=ExamResponse)
 async def schedule_exams(request: ExamRequest, current_user: dict = Depends(get_current_user)):
-    # Verify user belongs to workspace
     ws = await get_workspace_by_id(request.workspace_id)
     if not ws or current_user["_id"] not in ws.get("members", []):
          raise HTTPException(status_code=403, detail="Access to workspace denied")
 
     try:
+        # Fetch exam cycle
+        cycles = await get_all_exam_cycles(request.workspace_id)
+        cycle_dict = next((c for c in cycles if str(c.get("_id", c.get("id"))) == request.exam_cycle_id), None)
+        if not cycle_dict:
+            raise HTTPException(status_code=404, detail="Exam cycle not found")
+        exam_cycle = ExamCycle(**cycle_dict)
+        
+        # Fetch all courses for this workspace, then filter by exam cycle's semester & batch_year
+        all_courses_data = await get_all_courses(request.workspace_id)
+        cycle_courses = []
+        cycle_program_ids = set(exam_cycle.program_ids)
+        
+        for c_data in all_courses_data:
+            course = Course(**c_data)
+            # Course belongs to this exam cycle if it matches the semester AND batch_year
+            if course.semester == exam_cycle.semester and exam_cycle.batch_year in course.batch_ids:
+                # Include course if any of its program_ids match the cycle's program_ids
+                if any(pid in cycle_program_ids for pid in course.program_ids):
+                    cycle_courses.append(course)
+        
+        if not cycle_courses:
+            raise HTTPException(status_code=400, detail="No courses found matching this exam cycle's semester, batch year, and programs.")
+        
+        # Fetch students and holidays
+        students_data = await get_all_students(request.workspace_id)
+        students = [Student(**s) for s in students_data]
+        
+        events_data = await get_calendar_events(request.workspace_id)
+        holidays = [CalendarEvent(**e) for e in events_data if e.get("type") == "holiday"]
+        
         initial_state = {
-            "request": request.request_text,
-            "workspace_id": request.workspace_id, # Pass workspace context
-            "students": [],
-            "halls": [],
-            "exams": [],
+            "workspace_id": request.workspace_id,
+            "request_data": pydantic_to_dict(request),
+            "students": students,
+            "courses": cycle_courses,
+            "exam_cycle": exam_cycle,
+            "holidays": holidays,
             "timetable": [],
-            "allocations": [],
-            "conflicts": [],
             "status": "start",
-            "errors": []
+            "errors": [],
+            "conflicts": []
         }
         
-        result = await exam_graph.ainvoke(initial_state)
+        result = await scheduling_graph.ainvoke(initial_state)
         
         timetable = [t.model_dump() for t in result.get("timetable", [])]
-        allocations = [a.model_dump() for a in result.get("allocations", [])]
-        halls = [pydantic_to_dict(h) for h in result.get("halls", [])]
         
         response_payload = {
             "timetable": timetable,
-            "allocations": allocations,
-            "halls": halls,
             "conflicts": result.get("conflicts", []),
             "status": result.get("status", "unknown"),
             "errors": result.get("errors", [])
         }
-        
-        # Save to DB if successful/complete
-        if result.get("status") == "complete":
-             await save_exam_plan(request.workspace_id, response_payload)
-             
         return response_payload
-        
     except Exception as e:
         print(f"Error in exam scheduling: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/history", response_model=List[AgentResponse])
 async def get_history(current_user: dict = Depends(get_current_user)):

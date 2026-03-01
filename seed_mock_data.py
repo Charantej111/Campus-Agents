@@ -47,26 +47,30 @@ async def seed_data():
         print(f"Created workspace: {workspace_id}")
     
     # Clear existing data for this workspace
+    await db.degrees.delete_many({"workspace_id": workspace_id})
     await db.programs.delete_many({"workspace_id": workspace_id})
     await db.departments.delete_many({"workspace_id": workspace_id})
     await db.buildings.delete_many({"workspace_id": workspace_id})
-    await db.halls.delete_many({"workspace_id": workspace_id})
+    await db.rooms.delete_many({"workspace_id": workspace_id})
     await db.courses.delete_many({"workspace_id": workspace_id})
-    await db.exams.delete_many({"workspace_id": workspace_id})
+    await db.exam_cycles.delete_many({"workspace_id": workspace_id})
     await db.students.delete_many({"workspace_id": workspace_id})
     
-    # Programs
-    programs = [
-        {"code": "BTECH", "name": "Bachelor of Technology", "workspace_id": workspace_id},
-        {"code": "MTECH", "name": "Master of Technology", "workspace_id": workspace_id},
-        {"code": "MCA", "name": "Master of Computer Applications", "workspace_id": workspace_id},
-        {"code": "BBA", "name": "Bachelor of Business Administration", "workspace_id": workspace_id}
+    # Degrees
+    degrees_data = [
+        {"name": "B.Tech", "workspace_id": workspace_id},
+        {"name": "M.Tech", "workspace_id": workspace_id},
+        {"name": "MCA", "workspace_id": workspace_id},
+        {"name": "MBA", "workspace_id": workspace_id}
     ]
-    await db.programs.insert_many(programs)
-    print(f"Created {len(programs)} programs")
-    
+    degree_results = await db.degrees.insert_many(degrees_data)
+    # Map name to ID for later use
+    cursor = db.degrees.find({"workspace_id": workspace_id})
+    degree_map = {doc["name"]: str(doc["_id"]) async for doc in cursor}
+    print(f"Created {len(degrees_data)} degrees")
+
     # Departments
-    departments = [
+    departments_data = [
         {"id": "CSE", "name": "Computer Science and Engineering", "workspace_id": workspace_id},
         {"id": "AIML", "name": "Artificial Intelligence and Machine Learning", "workspace_id": workspace_id},
         {"id": "ECE", "name": "Electronics and Communication Engineering", "workspace_id": workspace_id},
@@ -74,93 +78,130 @@ async def seed_data():
         {"id": "IT", "name": "Information Technology", "workspace_id": workspace_id},
         {"id": "MBA", "name": "Management Studies", "workspace_id": workspace_id}
     ]
-    await db.departments.insert_many(departments)
-    print(f"Created {len(departments)} departments")
+    await db.departments.insert_many(departments_data)
+    print(f"Created {len(departments_data)} departments")
+    
+    # Programs
+    programs = [
+        {"name": "B.Tech in Computer Science Engineering", "degree_id": degree_map["B.Tech"], "department_id": "CSE", "workspace_id": workspace_id},
+        {"name": "M.Tech in Computer Science Engineering", "degree_id": degree_map["M.Tech"], "department_id": "CSE", "workspace_id": workspace_id},
+        {"name": "B.Tech in Artificial Intelligence and Machine Learning", "degree_id": degree_map["B.Tech"], "department_id": "AIML", "workspace_id": workspace_id},
+        {"name": "B.Tech in Electronics and Communication Engineering", "degree_id": degree_map["B.Tech"], "department_id": "ECE", "workspace_id": workspace_id},
+        {"name": "B.Tech in Information Technology", "degree_id": degree_map["B.Tech"], "department_id": "IT", "workspace_id": workspace_id},
+        {"name": "MBA in Management Studies", "degree_id": degree_map["MBA"], "department_id": "MBA", "workspace_id": workspace_id},
+        {"name": "MCA in Information Technology", "degree_id": degree_map["MCA"], "department_id": "IT", "workspace_id": workspace_id}
+    ]
+    program_results = await db.programs.insert_many(programs)
+    # Map name to ID for later use
+    cursor = db.programs.find({"workspace_id": workspace_id})
+    program_map = {doc["name"]: str(doc["_id"]) async for doc in cursor}
+    print(f"Created {len(programs)} programs")
     
     # Buildings
     buildings = [
         {"id": "AB", "name": "Academic Block A", "workspace_id": workspace_id},
         {"id": "BB", "name": "Academic Block B", "workspace_id": workspace_id},
-        {"id": "LH", "name": "Lecture Hall Complex", "workspace_id": workspace_id}
+        {"id": "LH", "name": "Lecture Room Complex", "workspace_id": workspace_id}
     ]
     await db.buildings.insert_many(buildings)
     print(f"Created {len(buildings)} buildings")
     
-    # Halls
-    halls = [
-        {"id": "101", "name": "Hall 101", "capacity": 60, "rows": 10, "columns": 6, "building_id": "AB", "workspace_id": workspace_id},
-        {"id": "102", "name": "Hall 102", "capacity": 60, "rows": 10, "columns": 6, "building_id": "AB", "workspace_id": workspace_id},
-        {"id": "201", "name": "Hall 201", "capacity": 80, "rows": 10, "columns": 8, "building_id": "AB", "workspace_id": workspace_id},
-        {"id": "101", "name": "Hall 101", "capacity": 100, "rows": 10, "columns": 10, "building_id": "BB", "workspace_id": workspace_id},
-        {"id": "102", "name": "Hall 102", "capacity": 100, "rows": 10, "columns": 10, "building_id": "BB", "workspace_id": workspace_id},
+    # Rooms
+    rooms = [
+        {"id": "101", "name": "Room 101", "capacity": 60, "rows": 10, "columns": 6, "building_id": "AB", "workspace_id": workspace_id},
+        {"id": "102", "name": "Room 102", "capacity": 60, "rows": 10, "columns": 6, "building_id": "AB", "workspace_id": workspace_id},
+        {"id": "201", "name": "Room 201", "capacity": 80, "rows": 10, "columns": 8, "building_id": "AB", "workspace_id": workspace_id},
+        {"id": "101", "name": "Room 101", "capacity": 100, "rows": 10, "columns": 10, "building_id": "BB", "workspace_id": workspace_id},
+        {"id": "102", "name": "Room 102", "capacity": 100, "rows": 10, "columns": 10, "building_id": "BB", "workspace_id": workspace_id},
         {"id": "301", "name": "Auditorium", "capacity": 200, "rows": 20, "columns": 10, "building_id": "LH", "workspace_id": workspace_id}
     ]
-    await db.halls.insert_many(halls)
-    print(f"Created {len(halls)} halls")
+    await db.rooms.insert_many(rooms)
+    print(f"Created {len(rooms)} rooms")
     
     # Courses
     courses = [
-        # B.Tech CSE
-        {"code": "CS101", "name": "Introduction to Programming", "department_id": "CSE", "program_code": "BTECH", "workspace_id": workspace_id},
-        {"code": "CS201", "name": "Data Structures and Algorithms", "department_id": "CSE", "program_code": "BTECH", "workspace_id": workspace_id},
-        {"code": "CS301", "name": "Database Management Systems", "department_id": "CSE", "program_code": "BTECH", "workspace_id": workspace_id},
-        {"code": "CS401", "name": "Operating Systems", "department_id": "CSE", "program_code": "BTECH", "workspace_id": workspace_id},
+        # B.Tech CSE & IT (Semester 1)
+        {"code": "CS101", "name": "Introduction to Programming", "semester": 1, "program_ids": [program_map["B.Tech in Computer Science Engineering"], program_map["B.Tech in Information Technology"]], "batch_ids": [2025, 2026], "department_id": "CSE", "workspace_id": workspace_id},
+        {"code": "MA101", "name": "Engineering Mathematics I", "semester": 1, "program_ids": [program_map["B.Tech in Computer Science Engineering"], program_map["B.Tech in Information Technology"]], "batch_ids": [2025], "department_id": "CSE", "workspace_id": workspace_id},
+        {"code": "PH101", "name": "Engineering Physics", "semester": 1, "program_ids": [program_map["B.Tech in Computer Science Engineering"], program_map["B.Tech in Information Technology"]], "batch_ids": [2025], "department_id": "CSE", "workspace_id": workspace_id},
+        {"code": "EE101", "name": "Basic Electrical Engineering", "semester": 1, "program_ids": [program_map["B.Tech in Computer Science Engineering"], program_map["B.Tech in Information Technology"]], "batch_ids": [2025], "department_id": "ECE", "workspace_id": workspace_id},
+        {"code": "CS201", "name": "Data Structures and Algorithms", "semester": 2, "program_ids": [program_map["B.Tech in Computer Science Engineering"]], "batch_ids": [2025, 2026], "department_id": "CSE", "workspace_id": workspace_id},
         
         # B.Tech AIML
-        {"code": "AI101", "name": "Introduction to AI", "department_id": "AIML", "program_code": "BTECH", "workspace_id": workspace_id},
-        {"code": "AI201", "name": "Machine Learning", "department_id": "AIML", "program_code": "BTECH", "workspace_id": workspace_id},
-        {"code": "AI301", "name": "Deep Learning", "department_id": "AIML", "program_code": "BTECH", "workspace_id": workspace_id},
-        
-        # B.Tech ECE
-        {"code": "EC101", "name": "Circuit Theory", "department_id": "ECE", "program_code": "BTECH", "workspace_id": workspace_id},
-        {"code": "EC201", "name": "Digital Electronics", "department_id": "ECE", "program_code": "BTECH", "workspace_id": workspace_id},
+        {"code": "AI101", "name": "Introduction to AI", "semester": 1, "program_ids": [program_map["B.Tech in Artificial Intelligence and Machine Learning"]], "batch_ids": [2025, 2026], "department_id": "AIML", "workspace_id": workspace_id},
         
         # M.Tech
-        {"code": "MT501", "name": "Advanced Algorithms", "department_id": "CSE", "program_code": "MTECH", "workspace_id": workspace_id},
-        {"code": "MT502", "name": "Cloud Computing", "department_id": "CSE", "program_code": "MTECH", "workspace_id": workspace_id},
-        
-        # MCA
-        {"code": "MCA101", "name": "Programming in C", "department_id": "IT", "program_code": "MCA", "workspace_id": workspace_id},
-        {"code": "MCA201", "name": "Web Technologies", "department_id": "IT", "program_code": "MCA", "workspace_id": workspace_id},
-        
-        # BBA
-        {"code": "BBA101", "name": "Principles of Management", "department_id": "MBA", "program_code": "BBA", "workspace_id": workspace_id},
-        {"code": "BBA201", "name": "Marketing Management", "department_id": "MBA", "program_code": "BBA", "workspace_id": workspace_id}
+        {"code": "MT501", "name": "Advanced Algorithms", "semester": 1, "program_ids": [program_map["M.Tech in Computer Science Engineering"]], "batch_ids": [2024, 2025], "department_id": "CSE", "workspace_id": workspace_id},
     ]
     await db.courses.insert_many(courses)
     print(f"Created {len(courses)} courses")
     
-    # Exams
-    exams = [
-        {"course_code": "CS101", "course_name": "Programming Midterm", "duration_minutes": 120, "program_code": "BTECH", "workspace_id": workspace_id},
-        {"course_code": "CS201", "course_name": "DSA Final Exam", "duration_minutes": 180, "program_code": "BTECH", "workspace_id": workspace_id},
-        {"course_code": "CS301", "course_name": "DBMS Midterm", "duration_minutes": 120, "program_code": "BTECH", "workspace_id": workspace_id},
-        {"course_code": "AI101", "course_name": "AI Fundamentals Exam", "duration_minutes": 150, "program_code": "BTECH", "workspace_id": workspace_id},
-        {"course_code": "AI201", "course_name": "ML Final Exam", "duration_minutes": 180, "program_code": "BTECH", "workspace_id": workspace_id},
-        {"course_code": "EC101", "course_name": "Circuit Theory Exam", "duration_minutes": 120, "program_code": "BTECH", "workspace_id": workspace_id},
-        {"course_code": "MT501", "course_name": "Advanced Algorithms Exam", "duration_minutes": 180, "program_code": "MTECH", "workspace_id": workspace_id},
-        {"course_code": "MCA101", "course_name": "C Programming Exam", "duration_minutes": 120, "program_code": "MCA", "workspace_id": workspace_id},
-        {"course_code": "BBA101", "course_name": "Management Principles Exam", "duration_minutes": 120, "program_code": "BBA", "workspace_id": workspace_id}
+    # Exam Cycles
+    exam_cycles = [
+        {"name": "Midterms 2025", "semester": 1, "program_ids": [program_map["B.Tech in Computer Science Engineering"]], "batch_year": 2025, "student_ids": ["BT21CSE001"], "workspace_id": workspace_id},
+        {"name": "Finals 2024", "semester": 2, "program_ids": [program_map["M.Tech in Computer Science Engineering"]], "batch_year": 2024, "student_ids": ["MT22CSE001"], "workspace_id": workspace_id},
     ]
-    await db.exams.insert_many(exams)
-    print(f"Created {len(exams)} exams")
+    await db.exam_cycles.insert_many(exam_cycles)
+    print(f"Created {len(exam_cycles)} exam cycles")
     
     # Students
     students = [
-        {"id": "BT21CSE001", "name": "Rahul Sharma", "department_id": "CSE", "program": "BTECH", "enrolled_courses": ["CS101", "CS201", "CS301"], "workspace_id": workspace_id},
-        {"id": "BT21CSE002", "name": "Priya Patel", "department_id": "CSE", "program": "BTECH", "enrolled_courses": ["CS101", "CS201"], "workspace_id": workspace_id},
-        {"id": "BT21CSE003", "name": "Amit Kumar", "department_id": "CSE", "program": "BTECH", "enrolled_courses": ["CS201", "CS301", "CS401"], "workspace_id": workspace_id},
-        {"id": "BT21AIML001", "name": "Sneha Reddy", "department_id": "AIML", "program": "BTECH", "enrolled_courses": ["AI101", "AI201"], "workspace_id": workspace_id},
-        {"id": "BT21AIML002", "name": "Vikram Singh", "department_id": "AIML", "program": "BTECH", "enrolled_courses": ["AI101", "AI201", "AI301"], "workspace_id": workspace_id},
-        {"id": "BT21ECE001", "name": "Anjali Gupta", "department_id": "ECE", "program": "BTECH", "enrolled_courses": ["EC101", "EC201"], "workspace_id": workspace_id},
-        {"id": "BT21ECE002", "name": "Rohan Verma", "department_id": "ECE", "program": "BTECH", "enrolled_courses": ["EC101"], "workspace_id": workspace_id},
-        {"id": "MT22CSE001", "name": "Deepak Joshi", "department_id": "CSE", "program": "MTECH", "enrolled_courses": ["MT501", "MT502"], "workspace_id": workspace_id},
-        {"id": "MT22CSE002", "name": "Kavita Nair", "department_id": "CSE", "program": "MTECH", "enrolled_courses": ["MT501"], "workspace_id": workspace_id},
-        {"id": "MCA22001", "name": "Suresh Rao", "department_id": "IT", "program": "MCA", "enrolled_courses": ["MCA101", "MCA201"], "workspace_id": workspace_id},
-        {"id": "MCA22002", "name": "Pooja Desai", "department_id": "IT", "program": "MCA", "enrolled_courses": ["MCA101"], "workspace_id": workspace_id},
-        {"id": "BBA21001", "name": "Arjun Mehta", "department_id": "MBA", "program": "BBA", "enrolled_courses": ["BBA101", "BBA201"], "workspace_id": workspace_id},
-        {"id": "BBA21002", "name": "Neha Kapoor", "department_id": "MBA", "program": "BBA", "enrolled_courses": ["BBA101"], "workspace_id": workspace_id}
+        {"id": "BT21CSE001", "name": "Rahul Sharma", "semester": 1, "program_id": program_map["B.Tech in Computer Science Engineering"], "batch_year": 2025, "enrolled_courses": ["CS101", "CS201", "AI101"], "workspace_id": workspace_id},
+        {"id": "MT22CSE001", "name": "Deepak Joshi", "semester": 2, "program_id": program_map["M.Tech in Computer Science Engineering"], "batch_year": 2024, "enrolled_courses": ["MT501"], "workspace_id": workspace_id},
     ]
+
+    import random
+    first_names = ["Amit", "Sneha", "Karan", "Pooja", "Vikram", "Anjali", "Rohan", "Neha", "Sanjay", "Kavya", "Arjun", "Riya", "Aditya", "Ishita", "Siddharth", "Aisha"]
+    last_names = ["Kumar", "Singh", "Patel", "Sharma", "Gupta", "Verma", "Reddy", "Rao", "Nair", "Das"]
+    programs_list = [
+        (program_map["B.Tech in Computer Science Engineering"], "BT", "CSE", [1, 2], [2024, 2025, 2026], ["CS101", "CS201"]),
+        (program_map["B.Tech in Artificial Intelligence and Machine Learning"], "BT", "AIM", [1], [2025, 2026], ["AI101", "CS101"]),
+        (program_map["M.Tech in Computer Science Engineering"], "MT", "CSE", [1, 2], [2024, 2025], ["MT501"]),
+    ]
+
+    for i in range(2, 32):
+        prog_id, prefix, dept, sems, batches, possible_courses = random.choice(programs_list)
+        batch = random.choice(batches)
+        sem = random.choice(sems)
+        courses = random.sample(possible_courses, k=random.randint(1, len(possible_courses)))
+        
+        student = {
+            "id": f"{prefix}{batch % 100}{dept}{i:03d}",
+            "name": f"{random.choice(first_names)} {random.choice(last_names)}",
+            "semester": sem,
+            "program_id": prog_id,
+            "batch_year": batch,
+            "enrolled_courses": courses,
+            "workspace_id": workspace_id
+        }
+        students.append(student)
+
+    # 10 exactly for B.Tech in CSE (Batch 2025, Semester 1)
+    cse_prog_id = program_map["B.Tech in Computer Science Engineering"]
+    for i in range(100, 110):
+        students.append({
+            "id": f"BT25CSE{i:03d}",
+            "name": f"{random.choice(first_names)} {random.choice(last_names)}",
+            "semester": 1,
+            "program_id": cse_prog_id,
+            "batch_year": 2025,
+            "enrolled_courses": ["CS101", "MA101", "PH101", "EE101"],
+            "workspace_id": workspace_id
+        })
+        
+    # 10 exactly for B.Tech in IT (Batch 2025, Semester 1)
+    it_prog_id = program_map["B.Tech in Information Technology"]
+    for i in range(100, 110):
+        students.append({
+            "id": f"BT25IT{i:03d}",
+            "name": f"{random.choice(first_names)} {random.choice(last_names)}",
+            "semester": 1,
+            "program_id": it_prog_id,
+            "batch_year": 2025,
+            "enrolled_courses": ["CS101", "MA101", "PH101", "EE101"],
+            "workspace_id": workspace_id
+        })
+
     await db.students.insert_many(students)
     print(f"Created {len(students)} students")
     

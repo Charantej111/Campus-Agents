@@ -8,7 +8,8 @@ import WorkspaceManager from './components/WorkspaceManager';
 import JDInput from "./components/JDInput";
 import ResultsView from "./components/ResultsView";
 import HistorySidebar from "./components/HistorySidebar";
-import ExamAgentView from "./components/ExamAgentView";
+import SchedulingAgentView from "./components/SchedulingAgentView";
+import AllocationAgentView from "./components/AllocationAgentView";
 import { Briefcase, Calendar, Settings, LogOut, Layers, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -17,7 +18,8 @@ const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const AuthenticatedApp = () => {
   const { user, workspace, selectWorkspace, logout } = useAuth();
-  const [currentView, setCurrentView] = useState('placement'); // 'placement' | 'exam' | 'manage'
+  const [currentView, setCurrentView] = useState('placement'); // 'placement' | 'scheduling' | 'allocation' | 'manage'
+
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -77,7 +79,7 @@ const AuthenticatedApp = () => {
       <div className={`container mx-auto px-4 py-8 flex-grow max-w-7xl transition-all duration-300 ${isSidebarOpen ? "md:pl-80" : ""}`}>
         <header className="flex flex-col md:flex-row items-center justify-between gap-6 mb-12">
           <div className="flex items-center gap-4">
-            <motion.div 
+            <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               className="p-3 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-xl"
@@ -100,19 +102,27 @@ const AuthenticatedApp = () => {
               Placement
             </button>
             <button
-              onClick={() => setCurrentView('exam')}
-              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${currentView === 'exam' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+              onClick={() => setCurrentView('scheduling')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${currentView === 'scheduling' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
             >
               <Calendar className="w-4 h-4" />
-              Exam
+              Scheduling
+            </button>
+            <button
+              onClick={() => setCurrentView('allocation')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${currentView === 'allocation' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+            >
+              <Layers className="w-4 h-4" />
+              Allocation
             </button>
             <button
               onClick={() => setCurrentView('manage')}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${currentView === 'manage' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
             >
-              <Layers className="w-4 h-4" />
+              <Settings className="w-4 h-4" />
               Manage
             </button>
+
           </div>
 
           <div className="flex items-center gap-2">
@@ -140,7 +150,8 @@ const AuthenticatedApp = () => {
               )}
             </>
           )}
-          {currentView === 'exam' && <ExamAgentView />}
+          {currentView === 'scheduling' && <SchedulingAgentView />}
+          {currentView === 'allocation' && <AllocationAgentView />}
           {currentView === 'manage' && <WorkspaceManager />}
         </main>
       </div>

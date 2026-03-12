@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING, DESCENDING
 from dotenv import load_dotenv
@@ -37,7 +37,7 @@ async def save_generation_to_db(data: dict):
     
     document = {
         **data,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     
     result = await collection.insert_one(document)
@@ -76,7 +76,7 @@ async def get_all_students(workspace_id: str):
         if "semester" not in doc:
             doc["semester"] = 1
         if "batch_year" not in doc:
-            doc["batch_year"] = datetime.utcnow().year
+            doc["batch_year"] = datetime.now(timezone.utc).year
         students.append(doc)
     return students
 
@@ -195,8 +195,6 @@ async def create_calendar_event(data: dict) -> str:
     result = await db.calendar_events.insert_one(data)
     return str(result.inserted_id)
 
-import datetime
-
 async def get_calendar_events(workspace_id: str):
     db = get_database()
     if db is None:
@@ -208,7 +206,7 @@ async def get_calendar_events(workspace_id: str):
         events.append(doc)
         
     # Generate dynamic holidays (Sundays and Jan 1st for +/- 3 years)
-    current_year = datetime.datetime.now().year
+    current_year = datetime.now(timezone.utc).year
     dynamic_events = []
     
     for year in range(current_year - 3, current_year + 4):
@@ -221,8 +219,9 @@ async def get_calendar_events(workspace_id: str):
             "workspace_id": workspace_id,
         })
         # Add all Sundays
-        d = datetime.date(year, 1, 1)
-        d += datetime.timedelta(days=6 - d.weekday()) # First Sunday
+        from datetime import date, timedelta as td
+        d = date(year, 1, 1)
+        d += td(days=6 - d.weekday()) # First Sunday
         while d.year == year:
             dynamic_events.append({
                 "_id": f"sunday_{d.isoformat()}",
@@ -231,7 +230,7 @@ async def get_calendar_events(workspace_id: str):
                 "type": "holiday",
                 "workspace_id": workspace_id,
             })
-            d += datetime.timedelta(days=7)
+            d += td(days=7)
             
     return events + dynamic_events
 
@@ -436,11 +435,10 @@ async def save_exam_plan(workspace_id: str, plan_data: dict) -> str:
     if db is None:
          raise RuntimeError("Database connection failed")
     
-    import datetime as dt
     document = {
         **plan_data,
         "workspace_id": workspace_id,
-        "created_at": dt.datetime.utcnow()
+        "created_at": datetime.now(timezone.utc)
     }
     result = await db.exam_plans.insert_one(document)
     return str(result.inserted_id)

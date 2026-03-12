@@ -253,7 +253,7 @@ const AllocationAgentView = () => {
         }
 
         const printWindow = window.open('', '_blank');
-        printWindow.document.write(`
+        printWindow.document.body.innerHTML = `
             <html><head><title>Seat Allocation - Room ${roomAlloc.room_id}</title>
             <style>
                 body { font-family: 'Segoe UI', sans-serif; padding: 20px; }
@@ -271,7 +271,7 @@ const AllocationAgentView = () => {
                 Seating: ${roomAlloc.seating_type} | Occupied: ${roomAlloc.occupied_seats}/${roomAlloc.total_seats}
             </div>
             <div class="meta">
-                Programs: ${roomAlloc.program_ids.join(', ')} | Batches: ${roomAlloc.batch_years.join(', ')}
+                Programs: ${roomAlloc.program_ids.map(pid => getProgramName(pid)).join(', ')} | Batches: ${roomAlloc.batch_years.join(', ')}
             </div>
             <div class="courses">
                 ${allCourseCodes.map((c, i) => {
@@ -282,7 +282,8 @@ const AllocationAgentView = () => {
             <table>${gridHtml}</table>
             <script>window.onload = () => window.print();</script>
             </body></html>
-        `);
+        `;
+        printWindow.print();
         printWindow.document.close();
     };
 

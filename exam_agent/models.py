@@ -1,5 +1,5 @@
 from typing import List, Optional, Literal
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel, Field, field_validator, EmailStr
 import re
 
@@ -10,14 +10,14 @@ class User(BaseModel):
     email: EmailStr
     full_name: str
     password_hash: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Workspace(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     name: str
     owner_id: str
     members: List[str] = Field(default_factory=list) # List of user_ids
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Invitation(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
@@ -25,7 +25,7 @@ class Invitation(BaseModel):
     email: EmailStr
     token: str
     status: str = "pending" # pending, accepted, expired
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 # --- Exam Domain Models ---
 
@@ -57,7 +57,7 @@ class Student(BaseModel):
     name: str
     enrolled_courses: List[str] = Field(default_factory=list)
     program_id: str = "Unknown"
-    batch_year: int = Field(default_factory=lambda: datetime.utcnow().year)
+    batch_year: int = Field(default_factory=lambda: datetime.now(timezone.utc).year)
     semester: int = 1
     workspace_id: str
 
@@ -90,7 +90,7 @@ class ExamCycle(BaseModel):
     id: Optional[str] = Field(None, alias="_id")
     name: str = Field(..., description="E.g. Midterms 2026")
     semester: int = 1
-    batch_year: int = Field(default_factory=lambda: datetime.utcnow().year)
+    batch_year: int = Field(default_factory=lambda: datetime.now(timezone.utc).year)
     program_ids: List[str] = Field(default_factory=list, description="List of programs participating in this cycle")
     student_ids: List[str] = Field(default_factory=list, description="Computed list of students participating")
     workspace_id: str

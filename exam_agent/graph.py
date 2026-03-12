@@ -194,13 +194,12 @@ def generate_timetable_algorithmic_node(state: SchedulingState) -> SchedulingSta
             
     timetable = []
     
-    import datetime
     try:
-        current_date = datetime.datetime.strptime(start_date_str, "%Y-%m-%d")
+        current_date = datetime.strptime(start_date_str, "%Y-%m-%d")
     except ValueError:
         return {**state, "errors": state.get("errors", []) + ["Invalid start date format (use YYYY-MM-DD)"]}
     
-    def is_valid_date(d: datetime.datetime):
+    def is_valid_date(d: datetime):
         d_str = d.strftime("%Y-%m-%d")
         if d_str in holiday_dates:
             return False
@@ -208,9 +207,9 @@ def generate_timetable_algorithmic_node(state: SchedulingState) -> SchedulingSta
             return False
         return True
         
-    def get_next_valid_date(d: datetime.datetime):
+    def get_next_valid_date(d: datetime):
         while not is_valid_date(d):
-            d += datetime.timedelta(days=1)
+            d += timedelta(days=1)
         return d
         
     current_date = get_next_valid_date(current_date)
@@ -255,7 +254,7 @@ def generate_timetable_algorithmic_node(state: SchedulingState) -> SchedulingSta
         color_idx += 1
         
         if sessions_assigned_today == 0 and color_idx <= max_color:
-            current_date += datetime.timedelta(days=1 + gap)
+            current_date += timedelta(days=1 + gap)
             current_date = get_next_valid_date(current_date)
 
     return {

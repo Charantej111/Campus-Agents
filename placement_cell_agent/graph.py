@@ -28,7 +28,7 @@ MAX_PARALLEL_TESTS = 6
 
 # Initialize ChatGroq (Primary) - Kept for legacy reference but utils.get_llm_for_task is preferred
 groq_llm = ChatGroq(
-    model_name=MODEL_NAME,
+    model=MODEL_NAME,
     temperature=TEMPERATURE
 )
 
@@ -326,7 +326,7 @@ def expand_rounds_to_test_specs_node(state: PlacementState) -> PlacementState:
 def create_test_gen_node(test_index: int):
     """Factory function for parallel test generation node."""
     
-    def generate_single_test_node(state: PlacementState) -> PlacementState:
+    def generate_single_test_node(state: PlacementState) -> PlacementState | dict:
         generated_tests = state["generated_tests"]
         if test_index >= len(generated_tests):
             return {} 
@@ -397,7 +397,7 @@ def create_test_gen_node(test_index: int):
 
     return generate_single_test_node
 
-def validate_tests_node(state: PlacementState) -> PlacementState:
+def validate_tests_node(state: PlacementState) -> PlacementState | dict:
     """Validates the generated tests."""
     completed = state.get("completed_tests", [])
     errors = state.get("errors", [])

@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 
 # --- Internal Imports ---
 from placement_cell_agent.models import InterviewRound, MockTest, Question
+from placement_cell_agent.graph import graph
 from exam_agent.graph import scheduling_graph
 from exam_agent.allocation_graph import allocation_graph
 from exam_agent.models import Building, Room, Department, Student, ExamCycle, Course, Program, Degree, CalendarEvent, TimetableEntry, RoomAllocation

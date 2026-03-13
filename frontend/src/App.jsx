@@ -1,16 +1,19 @@
 import React, { useState, useEffect } from "react";
+import { Routes, Route } from "react-router-dom";
 import axios from "axios";
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider } from "./context/ToastContext";
 import LoginPage from './pages/LoginPage';
+import AssignmentSubmitPage from './pages/AssignmentSubmitPage';
 import WorkspaceSelector from './components/WorkspaceSelector';
 import WorkspaceManager from './components/WorkspaceManager';
+import AssignmentManager from './components/AssignmentManager';
 import JDInput from "./components/JDInput";
 import ResultsView from "./components/ResultsView";
 import HistorySidebar from "./components/HistorySidebar";
 import SchedulingAgentView from "./components/SchedulingAgentView";
 import AllocationAgentView from "./components/AllocationAgentView";
-import { Briefcase, Calendar, Settings, LogOut, Layers, Sparkles } from "lucide-react";
+import { Briefcase, Calendar, Settings, LogOut, Layers, Sparkles, ClipboardList } from "lucide-react";
 import { motion } from "framer-motion";
 
 // API config
@@ -18,7 +21,7 @@ const API_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 const AuthenticatedApp = () => {
   const { user, workspace, selectWorkspace, logout } = useAuth();
-  const [currentView, setCurrentView] = useState('placement'); // 'placement' | 'scheduling' | 'allocation' | 'manage'
+  const [currentView, setCurrentView] = useState('placement'); // 'placement' | 'scheduling' | 'allocation' | 'assignments' | 'manage'
 
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
@@ -116,6 +119,13 @@ const AuthenticatedApp = () => {
               Allocation
             </button>
             <button
+              onClick={() => setCurrentView('assignments')}
+              className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${currentView === 'assignments' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
+            >
+              <ClipboardList className="w-4 h-4" />
+              Assignments
+            </button>
+            <button
               onClick={() => setCurrentView('manage')}
               className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-bold transition-all ${currentView === 'manage' ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg' : 'text-white/60 hover:text-white hover:bg-white/5'}`}
             >
@@ -152,6 +162,7 @@ const AuthenticatedApp = () => {
           )}
           {currentView === 'scheduling' && <SchedulingAgentView />}
           {currentView === 'allocation' && <AllocationAgentView />}
+          {currentView === 'assignments' && <AssignmentManager />}
           {currentView === 'manage' && <WorkspaceManager />}
         </main>
       </div>
@@ -177,7 +188,10 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <AppContent />
+        <Routes>
+          <Route path="/submit/:assignmentId" element={<AssignmentSubmitPage />} />
+          <Route path="*" element={<AppContent />} />
+        </Routes>
       </ToastProvider>
     </AuthProvider>
   );

@@ -1,6 +1,6 @@
 import os
 from typing import List, Optional, Any
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import ASCENDING, DESCENDING
 from dotenv import load_dotenv
@@ -456,3 +456,106 @@ async def get_latest_exam_plan(workspace_id: str) -> Optional[dict]:
     if plan:
         plan["_id"] = str(plan["_id"])
     return plan
+
+# --- Assignment Agent DB Helpers ---
+
+async def create_assignment(data: dict) -> str:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    data["created_at"] = datetime.now(timezone.utc)
+    data["reminder_sent"] = False
+    result = await db.assignments.insert_one(data)
+    return str(result.inserted_id)
+
+async def get_all_assignments(workspace_id: str):
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    cursor = db.assignments.find({"workspace_id": workspace_id}).sort("created_at", DESCENDING)
+    assignments = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        assignments.append(doc)
+    return assignments
+
+async def get_assignment_by_id(assignment_id: str) -> Optional[dict]:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    try:
+        doc = await db.assignments.find_one({"_id": ObjectId(assignment_id)})
+        if doc:
+            doc["_id"] = str(doc["_id"])
+        return doc
+    except Exception:
+        return None
+
+async def delete_assignment(assignment_id: str, workspace_id: str) -> bool:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    result = await db.assignments.delete_one({"_id": ObjectId(assignment_id), "workspace_id": workspace_id})
+    if result.deleted_count > 0:
+        # Also delete associated submissions
+        await db.assignment_submissions.delete_many({"assignment_id": assignment_id})
+        return True
+    return False
+
+async def create_submission(data: dict) -> str:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    data["submitted_at"] = datetime.now(timezone.utc)
+    result = await db.assignment_submissions.insert_one(data)
+    return str(result.inserted_id)
+
+async def get_assignment_submissions(assignment_id: str):
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    cursor = db.assignment_submissions.find({"assignment_id": assignment_id}).sort("submitted_at", DESCENDING)
+    subs = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        subs.append(doc)
+    return subs
+
+async def get_submission_by_roll(assignment_id: str, roll_number: str) -> Optional[dict]:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    doc = await db.assignment_submissions.find_one({
+        "assignment_id": assignment_id,
+        "roll_number": roll_number
+    })
+    if doc:
+        doc["_id"] = str(doc["_id"])
+    return doc
+
+async def update_assignment_reminder_sent(assignment_id: str) -> bool:
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    result = await db.assignments.update_one(
+        {"_id": ObjectId(assignment_id)},
+        {"$set": {"reminder_sent": True}}
+    )
+    return result.modified_count > 0
+
+async def get_assignments_needing_reminder():
+    """Get assignments where deadline is within 24 hours and reminder not yet sent."""
+    db = get_database()
+    if db is None:
+        raise RuntimeError("Database connection failed")
+    now = datetime.now(timezone.utc)
+    tomorrow = now + timedelta(hours=24)
+    cursor = db.assignments.find({
+        "reminder_sent": False,
+        "deadline": {"$gte": now.isoformat(), "$lte": tomorrow.isoformat()}
+    })
+    assignments = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        assignments.append(doc)
+    return assignments

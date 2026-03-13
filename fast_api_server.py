@@ -1,14 +1,18 @@
 import os
 import uuid
+import asyncio
+import logging
 from typing import Dict, Any, List, Optional
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
-from fastapi import UploadFile, File
+from fastapi import UploadFile, File, Form, BackgroundTasks
 import pandas as pd
 import io
 
@@ -34,6 +38,9 @@ from db import (
     get_database, get_latest_exam_plan, save_exam_plan,
     create_calendar_event, get_calendar_events,
     delete_document, update_document,
+    create_assignment, get_all_assignments, get_assignment_by_id, delete_assignment as db_delete_assignment,
+    create_submission, get_assignment_submissions, get_submission_by_roll,
+    update_assignment_reminder_sent, get_assignments_needing_reminder,
 )
 # ... imports ...
 
@@ -43,9 +50,17 @@ from auth_utils import (
     get_password_hash, verify_password, create_access_token, decode_access_token,
     ACCESS_TOKEN_EXPIRE_MINUTES
 )
-from email_utils import send_invitation_email
+from email_utils import send_invitation_email, send_assignment_notification, send_deadline_reminder
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+# --- Uploads Directory ---
+UPLOADS_DIR = Path(os.path.dirname(os.path.abspath(__file__))) / "uploads"
+UPLOADS_DIR.mkdir(exist_ok=True)
+(UPLOADS_DIR / "student_lists").mkdir(exist_ok=True)
+(UPLOADS_DIR / "submissions").mkdir(exist_ok=True)
 
 app = FastAPI(title="Campus Agent API")
 
@@ -835,6 +850,334 @@ async def get_history(current_user: dict = Depends(get_current_user)):
         return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- Assignment Agent Routes ---
+
+@app.post("/workspaces/{workspace_id}/assignments")
+async def create_new_assignment(
+    workspace_id: str,
+    background_tasks: BackgroundTasks,
+    title: str = Form(...),
+    description: str = Form(""),
+    subject_name: str = Form(...),
+    section: str = Form(""),
+    batch: str = Form(""),
+    deadline: str = Form(...),
+    student_list: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user)
+):
+    """Create an assignment, parse student list, and send notification emails."""
+    try:
+        # Parse student list file (CSV or Excel)
+        contents = await student_list.read()
+        filename = student_list.filename or "students.csv"
+        
+        if filename.endswith(".csv"):
+            df = pd.read_csv(io.BytesIO(contents))
+        else:
+            df = pd.read_excel(io.BytesIO(contents))
+        
+        # Validate required columns
+        required_cols = ["roll_number", "name", "email"]
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            raise HTTPException(status_code=400, detail=f"Missing required columns: {', '.join(missing)}. Required: roll_number, name, email")
+        
+        # Clean data
+        students_list = []
+        for _, row in df.iterrows():
+            if pd.notna(row.get("roll_number")) and pd.notna(row.get("email")):
+                students_list.append({
+                    "roll_number": str(row["roll_number"]).strip(),
+                    "name": str(row.get("name", "")).strip(),
+                    "email": str(row["email"]).strip()
+                })
+        
+        if not students_list:
+            raise HTTPException(status_code=400, detail="No valid students found in the uploaded file.")
+        
+        # Save student list file
+        list_filename = f"{uuid.uuid4()}_{filename}"
+        list_path = UPLOADS_DIR / "student_lists" / list_filename
+        with open(list_path, "wb") as f:
+            f.write(contents)
+        
+        # Create assignment document
+        assignment_data = {
+            "title": title,
+            "description": description,
+            "subject_name": subject_name,
+            "section": section,
+            "batch": batch,
+            "deadline": deadline,
+            "workspace_id": workspace_id,
+            "created_by": current_user["_id"],
+            "students": students_list,
+            "total_students": len(students_list),
+            "student_list_file": list_filename
+        }
+        
+        assignment_id = await create_assignment(assignment_data)
+        
+        # Send emails in background
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        submission_link = f"{frontend_url}/submit/{assignment_id}"
+        
+        def send_emails_task():
+            for student in students_list:
+                try:
+                    send_assignment_notification(
+                        to_email=student["email"],
+                        student_name=student["name"],
+                        assignment_title=title,
+                        deadline=deadline,
+                        subject_name=subject_name,
+                        submission_link=submission_link
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to send email to {student['email']}: {e}")
+        
+        background_tasks.add_task(send_emails_task)
+        
+        return {
+            "id": assignment_id,
+            "message": f"Assignment created. Sending notifications to {len(students_list)} students.",
+            "total_students": len(students_list),
+            "submission_link": submission_link
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating assignment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/workspaces/{workspace_id}/assignments")
+async def list_assignments(workspace_id: str, current_user: dict = Depends(get_current_user)):
+    """List all assignments for a workspace."""
+    try:
+        assignments = await get_all_assignments(workspace_id)
+        # Add submission count for each assignment
+        for a in assignments:
+            subs = await get_assignment_submissions(a["_id"])
+            a["submitted_count"] = len(subs)
+            a["id"] = a.pop("_id")
+            if "created_at" in a and hasattr(a["created_at"], "isoformat"):
+                a["created_at"] = a["created_at"].isoformat()
+        return assignments
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/workspaces/{workspace_id}/assignments/{assignment_id}")
+async def get_assignment_detail(workspace_id: str, assignment_id: str, current_user: dict = Depends(get_current_user)):
+    """Get detailed assignment info with submission analytics."""
+    try:
+        assignment = await get_assignment_by_id(assignment_id)
+        if not assignment or assignment.get("workspace_id") != workspace_id:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        
+        submissions = await get_assignment_submissions(assignment_id)
+        
+        # Calculate analytics
+        total = assignment.get("total_students", 0)
+        submitted = len(submissions)
+        on_time = sum(1 for s in submissions if not s.get("is_late", False))
+        late = submitted - on_time
+        
+        # Enrich submissions with download URLs
+        for sub in submissions:
+            if "submitted_at" in sub and hasattr(sub["submitted_at"], "isoformat"):
+                sub["submitted_at"] = sub["submitted_at"].isoformat()
+            sub["id"] = sub.pop("_id")
+        
+        assignment["id"] = assignment.pop("_id")
+        if "created_at" in assignment and hasattr(assignment["created_at"], "isoformat"):
+            assignment["created_at"] = assignment["created_at"].isoformat()
+        
+        return {
+            **assignment,
+            "analytics": {
+                "total_students": total,
+                "submitted": submitted,
+                "pending": total - submitted,
+                "on_time": on_time,
+                "late": late,
+                "submission_rate": round((submitted / total * 100), 1) if total > 0 else 0
+            },
+            "submissions": submissions
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/workspaces/{workspace_id}/assignments/{assignment_id}")
+async def delete_assignment_endpoint(workspace_id: str, assignment_id: str, current_user: dict = Depends(get_current_user)):
+    """Delete an assignment and its submissions."""
+    success = await db_delete_assignment(assignment_id, workspace_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    return {"message": "Assignment deleted successfully"}
+
+
+@app.get("/workspaces/{workspace_id}/assignments/{assignment_id}/submissions")
+async def list_submissions(workspace_id: str, assignment_id: str, current_user: dict = Depends(get_current_user)):
+    """Get all submissions for an assignment."""
+    assignment = await get_assignment_by_id(assignment_id)
+    if not assignment or assignment.get("workspace_id") != workspace_id:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    submissions = await get_assignment_submissions(assignment_id)
+    for sub in submissions:
+        if "submitted_at" in sub and hasattr(sub["submitted_at"], "isoformat"):
+            sub["submitted_at"] = sub["submitted_at"].isoformat()
+        sub["id"] = sub.pop("_id")
+    return submissions
+
+
+# --- Public Assignment Submission Routes (No Auth) ---
+
+@app.get("/submit/{assignment_id}/info")
+async def get_submission_info(assignment_id: str):
+    """Public endpoint — get assignment info for submission page."""
+    assignment = await get_assignment_by_id(assignment_id)
+    if not assignment:
+        raise HTTPException(status_code=404, detail="Assignment not found")
+    
+    # Only return public fields
+    return {
+        "id": assignment["_id"],
+        "title": assignment["title"],
+        "description": assignment.get("description", ""),
+        "subject_name": assignment["subject_name"],
+        "deadline": assignment["deadline"],
+        "section": assignment.get("section", ""),
+        "batch": assignment.get("batch", ""),
+    }
+
+
+@app.post("/submit/{assignment_id}")
+async def submit_assignment(
+    assignment_id: str,
+    roll_number: str = Form(...),
+    file: UploadFile = File(...),
+):
+    """Public endpoint — student submits assignment by roll number + file upload."""
+    try:
+        assignment = await get_assignment_by_id(assignment_id)
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
+        
+        # Check if this roll number is in the student list
+        students = assignment.get("students", [])
+        student = next((s for s in students if s["roll_number"] == roll_number.strip()), None)
+        if not student:
+            raise HTTPException(status_code=400, detail="Roll number not found in the student list for this assignment.")
+        
+        # Check for duplicate submission
+        existing = await get_submission_by_roll(assignment_id, roll_number.strip())
+        if existing:
+            raise HTTPException(status_code=400, detail="You have already submitted this assignment.")
+        
+        # Determine if late
+        deadline_str = assignment.get("deadline", "")
+        is_late = False
+        try:
+            deadline_dt = datetime.fromisoformat(deadline_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > deadline_dt:
+                is_late = True
+        except Exception:
+            pass
+        
+        # Save file
+        file_ext = os.path.splitext(file.filename or "file")[1]
+        saved_filename = f"{assignment_id}_{roll_number.strip()}_{uuid.uuid4()}{file_ext}"
+        file_path = UPLOADS_DIR / "submissions" / saved_filename
+        
+        file_contents = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(file_contents)
+        
+        # Create submission record
+        submission_data = {
+            "assignment_id": assignment_id,
+            "roll_number": roll_number.strip(),
+            "student_name": student.get("name", ""),
+            "student_email": student.get("email", ""),
+            "file_name": file.filename,
+            "saved_file": saved_filename,
+            "is_late": is_late
+        }
+        
+        sub_id = await create_submission(submission_data)
+        
+        return {
+            "id": sub_id,
+            "message": "Assignment submitted successfully!" + (" (Late submission)" if is_late else ""),
+            "is_late": is_late
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error submitting assignment: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/uploads/submissions/{filename}")
+async def serve_submission_file(filename: str, current_user: dict = Depends(get_current_user)):
+    """Serve uploaded submission files (auth required)."""
+    file_path = UPLOADS_DIR / "submissions" / filename
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    return FileResponse(str(file_path), filename=filename)
+
+
+# --- Deadline Reminder Background Task ---
+
+async def check_deadline_reminders():
+    """Check for assignments with upcoming deadlines and send reminders."""
+    while True:
+        try:
+            assignments = await get_assignments_needing_reminder()
+            frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+            
+            for assignment in assignments:
+                submission_link = f"{frontend_url}/submit/{assignment['_id']}"
+                students = assignment.get("students", [])
+                
+                # Get already-submitted roll numbers
+                submissions = await get_assignment_submissions(assignment["_id"])
+                submitted_rolls = {s["roll_number"] for s in submissions}
+                
+                # Only remind students who haven't submitted
+                for student in students:
+                    if student["roll_number"] not in submitted_rolls:
+                        try:
+                            send_deadline_reminder(
+                                to_email=student["email"],
+                                student_name=student["name"],
+                                assignment_title=assignment["title"],
+                                deadline=assignment["deadline"],
+                                submission_link=submission_link
+                            )
+                        except Exception as e:
+                            logger.error(f"Reminder email failed for {student['email']}: {e}")
+                
+                await update_assignment_reminder_sent(assignment["_id"])
+                logger.info(f"Sent deadline reminders for assignment: {assignment['title']}")
+        except Exception as e:
+            logger.error(f"Error in deadline reminder check: {e}")
+        
+        await asyncio.sleep(3600)  # Check every hour
+
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(check_deadline_reminders())
+    logger.info("Deadline reminder background task started.")
+
 
 @app.get("/health")
 async def health_check():

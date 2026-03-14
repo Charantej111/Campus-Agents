@@ -1016,10 +1016,10 @@ const AssignmentDetail = ({ assignment, workspaceId, onBack, onDelete }) => {
           </div>
         </div>
 
-        {submissions.length === 0 ? (
+        {a.students && a.students.length === 0 ? (
           <div className="p-12 text-center">
-            <FileText className="w-8 h-8 text-white/10 mx-auto mb-3" />
-            <p className="text-sm text-white/30">No submissions yet</p>
+            <Users className="w-8 h-8 text-white/10 mx-auto mb-3" />
+            <p className="text-sm text-white/30">No students assigned yet</p>
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -1044,56 +1044,68 @@ const AssignmentDetail = ({ assignment, workspaceId, onBack, onDelete }) => {
                 </tr>
               </thead>
               <tbody>
-                {submissions.map((sub, idx) => (
-                  <tr
-                    key={sub.id}
-                    className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
-                  >
-                    <td className="px-6 py-4 text-sm font-mono text-white/70">
-                      {sub.roll_number}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-white/80">
-                      {sub.student_name}
-                    </td>
-                    <td className="px-6 py-4 text-xs text-white/40">
-                      {sub.submitted_at
-                        ? new Date(sub.submitted_at).toLocaleString()
-                        : "—"}
-                    </td>
-                    <td className="px-6 py-4">
-                      {sub.is_late ? (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
-                          <AlertCircle className="w-2.5 h-2.5" /> Late
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
-                          <CheckCircle className="w-2.5 h-2.5" /> On Time
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {sub.saved_file && (
-                        <a
-                          href={`${API_URL}/uploads/submissions/${sub.saved_file}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
-                          onClick={(e) => {
-                            e.preventDefault();
-                            const token = localStorage.getItem("token");
-                            window.open(
-                              `${API_URL}/uploads/submissions/${sub.saved_file}?token=${token}`,
-                              "_blank",
-                            );
-                          }}
-                        >
-                          <Download className="w-3 h-3" />{" "}
-                          {sub.file_name || "Download"}
-                        </a>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                {(a.students || []).map((student, idx) => {
+                  const sub = submissions.find(
+                    (s) => s.roll_number === student.roll_number,
+                  );
+
+                  return (
+                    <tr
+                      key={student.roll_number || idx}
+                      className="border-b border-white/[0.03] hover:bg-white/[0.02] transition-colors"
+                    >
+                      <td className="px-6 py-4 text-sm font-mono text-white/70">
+                        {student.roll_number}
+                      </td>
+                      <td className="px-6 py-4 text-sm text-white/80">
+                        {student.name}
+                      </td>
+                      <td className="px-6 py-4 text-xs text-white/40">
+                        {sub && sub.submitted_at
+                          ? new Date(sub.submitted_at).toLocaleString()
+                          : "—"}
+                      </td>
+                      <td className="px-6 py-4">
+                        {!sub ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            <Clock className="w-2.5 h-2.5" /> Pending
+                          </span>
+                        ) : sub.is_late ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20">
+                            <AlertCircle className="w-2.5 h-2.5" /> Late
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20">
+                            <CheckCircle className="w-2.5 h-2.5" /> On Time
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {sub && sub.saved_file ? (
+                          <a
+                            href={`${API_URL}/uploads/submissions/${sub.saved_file}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-xs text-indigo-400 hover:text-indigo-300 transition-colors"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              const token = localStorage.getItem("token");
+                              window.open(
+                                `${API_URL}/uploads/submissions/${sub.saved_file}?token=${token}`,
+                                "_blank",
+                              );
+                            }}
+                          >
+                            <Download className="w-3 h-3" />{" "}
+                            {sub.file_name || "Download"}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-white/20">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

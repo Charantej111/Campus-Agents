@@ -1126,8 +1126,15 @@ async def submit_assignment(
 
 
 @app.get("/uploads/submissions/{filename}")
-async def serve_submission_file(filename: str, current_user: dict = Depends(get_current_user)):
-    """Serve uploaded submission files (auth required)."""
+async def serve_submission_file(filename: str, token: str = None):
+    """Serve uploaded submission files using query param token."""
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    user_data = decode_access_token(token)
+    if not user_data:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
     file_path = UPLOADS_DIR / "submissions" / filename
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
